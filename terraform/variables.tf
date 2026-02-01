@@ -8,9 +8,3 @@ variable "notification_email" {
   description = "Email address for video ready notifications"
   type        = string
 }
-
-variable "pexels_api_key" {
-  description = "Pexels API key for stock videos (free at pexels.com/api)"
-  type        = string
-  default     = ""
-}

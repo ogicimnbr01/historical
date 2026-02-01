@@ -20,7 +20,6 @@ resource "aws_lambda_function" "video_generator" {
       S3_BUCKET_NAME     = aws_s3_bucket.videos.id
       SNS_TOPIC_ARN      = aws_sns_topic.video_ready.arn
       AWS_REGION_NAME    = var.aws_region
-      PEXELS_API_KEY     = var.pexels_api_key
     }
   }
 
