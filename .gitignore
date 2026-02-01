@@ -31,6 +31,9 @@ env/
 *.tfplan
 .terraform.lock.hcl
 
+# SECURITY: Sensitive terraform files - NEVER COMMIT WITH REAL VALUES
+terraform/terraform.tfvars
+
 # Lambda layers
 lambda/layers/
 
@@ -59,3 +62,5 @@ desktop.ini
 *.tmp
 *.temp
 response.json
+response_new.json
+**/response*.json
