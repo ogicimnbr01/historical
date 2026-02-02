@@ -1,17 +1,17 @@
 """
-Historical Music Generator for YouTube Shorts
-Generates period-appropriate background music using FFmpeg
-All content is original/AI-generated - 100% copyright-safe
+Historical Music Fetcher for YouTube Shorts
+Fetches royalty-free music from S3 and applies smart cutting
+Music files are pre-uploaded to S3 bucket (Pixabay AI music)
 """
 
 import os
 import subprocess
 import tempfile
-import uuid
+import boto3
 import random
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
-# FFmpeg binary path in Lambda Layer
+
 def get_ffmpeg_path() -> str:
     """Get FFmpeg binary path"""
     if os.path.exists("/opt/bin/ffmpeg"):
@@ -19,230 +19,358 @@ def get_ffmpeg_path() -> str:
     return "ffmpeg"
 
 
-# Historical music presets based on content type
-MUSIC_PRESETS = {
-    # Epic/Battle music - deep drums and low tones
-    "epic_orchestral": {
-        "name": "epic_orchestral",
-        "base_freq": 55.00,    # A1 - Deep timpani-like
-        "mid_freq": 110.00,    # A2 - Low strings
-        "high_freq": 220.00,   # A3 - Higher strings
-        "volumes": (0.15, 0.10, 0.06),
-        "tremolo": (0.8, 0.4),  # Faster tremolo for drama
-    },
-    
-    # War drums - rhythmic, intense
-    "war_drums": {
-        "name": "war_drums",
-        "base_freq": 45.00,    # Very deep drum
-        "mid_freq": 90.00,     # Mid drum
-        "high_freq": 180.00,   # Accent
-        "volumes": (0.18, 0.12, 0.05),
-        "tremolo": (1.2, 0.6),  # Rhythmic pulse
-    },
-    
-    # Nostalgic piano - warm, emotional
-    "nostalgic_piano": {
-        "name": "nostalgic_piano",
-        "base_freq": 130.81,   # C3 - Piano-like
-        "mid_freq": 196.00,    # G3 - Gentle
-        "high_freq": 261.63,   # C4 - Soft high
-        "volumes": (0.10, 0.08, 0.05),
-        "tremolo": (0.3, 0.2),  # Subtle movement
-    },
-    
-    # Dramatic strings - tense moments
-    "dramatic_strings": {
-        "name": "dramatic_strings",
-        "base_freq": 73.42,    # D2 - Cello-like
-        "mid_freq": 146.83,    # D3 - Viola range
-        "high_freq": 293.66,   # D4 - Violin
-        "volumes": (0.12, 0.10, 0.08),
-        "tremolo": (0.6, 0.4),  # String tremolo
-    },
-    
-    # Ottoman/Oriental - exotic, mysterious
-    "ottoman_oriental": {
-        "name": "ottoman_oriental",
-        "base_freq": 98.00,    # G2 - Oud-like base
-        "mid_freq": 196.00,    # G3 - Ney-like mid
-        "high_freq": 392.00,   # G4 - High shimmer
-        "volumes": (0.09, 0.11, 0.07),  # Mid-heavy for ney effect
-        "tremolo": (0.4, 0.3),
-    },
-    
-    # Ancient/Classical - marble halls feeling
-    "ancient_classical": {
-        "name": "ancient_classical",
-        "base_freq": 82.41,    # E2 - Lyre-like
-        "mid_freq": 164.81,    # E3
-        "high_freq": 329.63,   # E4
-        "volumes": (0.08, 0.10, 0.06),
-        "tremolo": (0.3, 0.2),
-    },
-    
-    # Medieval - castle atmosphere
-    "medieval_court": {
-        "name": "medieval_court",
-        "base_freq": 65.41,    # C2 - Deep organ
-        "mid_freq": 130.81,    # C3
-        "high_freq": 261.63,   # C4
-        "volumes": (0.11, 0.09, 0.05),
-        "tremolo": (0.4, 0.25),
-    },
+# S3 music configuration
+MUSIC_BUCKET_PREFIX = "music/loops/"
+
+# Mood to music category mapping
+MOOD_TO_CATEGORY = {
+    "epic": ["epic", "cinematic", "dramatic"],
+    "war": ["epic", "war", "dramatic"],
+    "battle": ["epic", "war"],
+    "nostalgic": ["emotional", "piano", "sad"],
+    "documentary": ["documentary", "ambient", "emotional"],
+    "dramatic": ["dramatic", "epic", "emotional"],
+    "ottoman": ["oriental", "arabian", "epic"],
+    "medieval": ["medieval", "celtic", "epic"],
+    "ancient": ["epic", "documentary"],
 }
 
-# Mapping from mood/era to music style
-MOOD_TO_MUSIC = {
-    "epic": "epic_orchestral",
-    "nostalgic": "nostalgic_piano",
-    "documentary": "nostalgic_piano",
-    "dramatic": "dramatic_strings",
-    "war": "war_drums",
-    "battle": "war_drums",
-    "ottoman": "ottoman_oriental",
-    "ancient": "ancient_classical",
-    "medieval": "medieval_court",
-    "renaissance": "nostalgic_piano",
+# Era to music category mapping
+ERA_TO_CATEGORY = {
+    "ancient": ["epic", "documentary"],
+    "medieval": ["medieval", "epic", "dramatic"],
+    "ottoman": ["oriental", "epic", "dramatic"],
+    "renaissance": ["documentary", "emotional"],
+    "19th_century": ["emotional", "documentary"],
+    "early_20th": ["emotional", "documentary", "dramatic"],
+    "ww1": ["epic", "war", "dramatic"],
+    "ww2": ["epic", "war", "dramatic"],
 }
 
 
-def generate_historical_music(duration: float = 30.0, music_style: str = None, mood: str = None, era: str = None) -> Optional[Dict]:
+def list_available_music(bucket: str, region: str = "us-east-1") -> Dict[str, List[str]]:
     """
-    Generate period-appropriate background music using FFmpeg
-    
-    Args:
-        duration: Duration in seconds
-        music_style: Specific music style (epic_orchestral, nostalgic_piano, etc.)
-        mood: Script mood for auto-selection
-        era: Historical era for auto-selection
-        
-    Returns:
-        Dict with 'path' to music file and 'metadata' for copyright tracking
-        None if generation fails
+    List all available music files from S3 organized by category
+    Returns: {"epic": ["epic_1.mp3", "epic_2.mp3"], ...}
     """
-    from copyright_safety import get_copyright_tracker
-    
-    unique_id = uuid.uuid4().hex[:8]
-    
-    # Select preset based on priority: explicit style > era > mood > random
-    if music_style and music_style in MUSIC_PRESETS:
-        preset_key = music_style
-    elif era and era in MOOD_TO_MUSIC:
-        preset_key = MOOD_TO_MUSIC[era]
-    elif mood and mood in MOOD_TO_MUSIC:
-        preset_key = MOOD_TO_MUSIC[mood]
-    else:
-        # Default to nostalgic piano for general history content
-        preset_key = "nostalgic_piano"
-    
-    preset = MUSIC_PRESETS.get(preset_key, MUSIC_PRESETS["nostalgic_piano"])
-    
-    # Use AAC output (widely supported)
-    output_path = os.path.join(tempfile.gettempdir(), f"history_music_{unique_id}.m4a")
+    s3 = boto3.client('s3', region_name=region)
+    music_by_category = {}
     
     try:
-        # Generate background music using FFmpeg synthesis
-        tremolo_freq, tremolo_depth = preset.get("tremolo", (0.5, 0.3))
+        response = s3.list_objects_v2(
+            Bucket=bucket,
+            Prefix=MUSIC_BUCKET_PREFIX
+        )
+        
+        for obj in response.get('Contents', []):
+            key = obj['Key']
+            filename = os.path.basename(key)
+            
+            # Skip if not a music file
+            if not filename.lower().endswith(('.mp3', '.m4a', '.wav', '.aac')):
+                continue
+            
+            # Extract category from filename (e.g., "epic_1.mp3" -> "epic")
+            raw_category = filename.split('_')[0].lower()
+            
+            # Normalize category names to match our internal categories
+            category_mapping = {
+                "emotional-piano": "emotional",
+                "cinematic": "epic",  # Map cinematic to epic
+                "oriental": "oriental",
+                "medieval": "medieval",
+                "documentary": "documentary",
+            }
+            category = category_mapping.get(raw_category, raw_category)
+            
+            if category not in music_by_category:
+                music_by_category[category] = []
+            music_by_category[category].append(key)
+        
+        print(f"🎵 Found music categories: {list(music_by_category.keys())}")
+        return music_by_category
+        
+    except Exception as e:
+        print(f"⚠️ Could not list music from S3: {e}")
+        return {}
+
+
+def download_music(bucket: str, s3_key: str, region: str = "us-east-1") -> Optional[str]:
+    """Download music file from S3 to temp directory"""
+    s3 = boto3.client('s3', region_name=region)
+    
+    filename = os.path.basename(s3_key)
+    local_path = os.path.join(tempfile.gettempdir(), f"music_{filename}")
+    
+    try:
+        s3.download_file(bucket, s3_key, local_path)
+        print(f"🎵 Downloaded music: {s3_key}")
+        return local_path
+    except Exception as e:
+        print(f"❌ Could not download music: {e}")
+        return None
+
+
+def select_music_for_mood(music_by_category: Dict[str, List[str]], 
+                          mood: str = None, era: str = None,
+                          direct_category: str = None) -> Optional[str]:
+    """
+    Select appropriate music based on mood/era or direct category
+    Returns S3 key of selected music
+    """
+    # If direct category is specified (from story_music_matcher), use it first
+    if direct_category and direct_category in music_by_category:
+        selected = random.choice(music_by_category[direct_category])
+        print(f"🎵 Selected music: {selected} (category: {direct_category})")
+        return selected
+    
+    # Determine preferred categories from mood/era
+    preferred_categories = []
+    
+    if mood and mood in MOOD_TO_CATEGORY:
+        preferred_categories.extend(MOOD_TO_CATEGORY[mood])
+    
+    if era and era in ERA_TO_CATEGORY:
+        preferred_categories.extend(ERA_TO_CATEGORY[era])
+    
+    # Remove duplicates while preserving order
+    preferred_categories = list(dict.fromkeys(preferred_categories))
+    
+    # If no preferences, use epic/documentary as default
+    if not preferred_categories:
+        preferred_categories = ["epic", "documentary", "emotional"]
+    
+    # Find first available category
+    for category in preferred_categories:
+        if category in music_by_category and music_by_category[category]:
+            selected = random.choice(music_by_category[category])
+            print(f"🎵 Selected music: {selected} (category: {category})")
+            return selected
+    
+    # Fallback: any available music
+    all_music = []
+    for music_list in music_by_category.values():
+        all_music.extend(music_list)
+    
+    if all_music:
+        selected = random.choice(all_music)
+        print(f"🎵 Fallback music selection: {selected}")
+        return selected
+    
+    return None
+
+
+def smart_cut_music(input_path: str, target_duration: float) -> Optional[str]:
+    """Apply smart cutting to music file"""
+    try:
+        from smart_music_cutter import smart_cut_music as do_smart_cut
+        return do_smart_cut(input_path, target_duration)
+    except ImportError:
+        # Fallback: simple cut if smart_music_cutter not available
+        return simple_cut_music(input_path, target_duration)
+
+
+def simple_cut_music(input_path: str, target_duration: float) -> Optional[str]:
+    """Simple fallback: cut from random position with fade"""
+    try:
+        # Get total duration
+        cmd = [
+            get_ffmpeg_path().replace('ffmpeg', 'ffprobe'),
+            '-v', 'quiet',
+            '-show_entries', 'format=duration',
+            '-of', 'csv=p=0',
+            input_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        total_duration = float(result.stdout.strip()) if result.returncode == 0 else 60.0
+        
+        # Choose random start (skip first 10 seconds)
+        max_start = max(0, total_duration - target_duration - 5)
+        start = random.uniform(10.0, min(30.0, max_start)) if max_start > 10 else 0
+        
+        # Cut with fade
+        output_path = os.path.join(tempfile.gettempdir(), "cut_music.m4a")
         
         cmd = [
             get_ffmpeg_path(),
             '-y',
-            # Low drone (foundation)
-            '-f', 'lavfi',
-            '-i', f"sine=frequency={preset['base_freq']}:duration={duration}",
-            # Mid tone (harmony)
-            '-f', 'lavfi',
-            '-i', f"sine=frequency={preset['mid_freq']}:duration={duration}",
-            # High tone (shimmer)
-            '-f', 'lavfi',
-            '-i', f"sine=frequency={preset['high_freq']}:duration={duration}",
-            # Mix with volumes, apply effects
-            '-filter_complex', (
-                f"[0:a]volume={preset['volumes'][0]},tremolo=f={tremolo_freq}:d={tremolo_depth}[a0];"
-                f"[1:a]volume={preset['volumes'][1]},tremolo=f={tremolo_freq*0.7}:d={tremolo_depth*0.8}[a1];"
-                f"[2:a]volume={preset['volumes'][2]},tremolo=f={tremolo_freq*1.3}:d={tremolo_depth*0.6}[a2];"
-                f"[a0][a1][a2]amix=inputs=3:duration=first[mixed];"
-                f"[mixed]afade=t=in:st=0:d=2,afade=t=out:st={max(0, duration-2)}:d=2,"
-                f"lowpass=f=1200,volume=2.0[out]"  # Warmer sound
-            ),
-            '-map', '[out]',
+            '-ss', str(start),
+            '-t', str(target_duration),
+            '-i', input_path,
+            '-af', f'afade=t=in:st=0:d=1,afade=t=out:st={target_duration-2}:d=2',
             '-c:a', 'aac',
             '-b:a', '128k',
             output_path
         ]
         
-        print(f"🎵 Generating {preset['name']} music...")
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         
-        if result.returncode != 0:
-            print(f"⚠️ AAC output failed, trying WAV...")
-            # Fallback to WAV
-            output_path = output_path.replace('.m4a', '.wav')
-            cmd[-1] = output_path
-            cmd[-3] = 'pcm_s16le'
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-            
-            if result.returncode != 0:
-                print(f"❌ FFmpeg music error: {result.stderr[:500]}")
-                return None
+        if result.returncode == 0 and os.path.exists(output_path):
+            return output_path
         
-        if os.path.exists(output_path):
-            file_size = os.path.getsize(output_path)
-            if file_size > 1000:
-                # Track in copyright system
-                tracker = get_copyright_tracker()
-                tracker.add_music(
-                    source="self_generated",
-                    music_id=unique_id,
-                    title=f"History Shorts - {preset['name']}",
-                    artist="System Generated",
-                    license_type="Original Content"
-                )
-                
-                print(f"✅ Generated {preset['name']} music: {output_path} ({file_size} bytes)")
-                
-                return {
-                    "path": output_path,
-                    "metadata": {
-                        "source": "self_generated",
-                        "title": f"History Shorts - {preset['name']}",
-                        "artist": "System Generated",
-                        "license": "Original Content - No Copyright",
-                        "safe_for_youtube": True
-                    }
-                }
-            else:
-                print(f"❌ Music file too small: {file_size} bytes")
-                return None
-        
-        print(f"❌ Music file not created")
         return None
         
     except Exception as e:
-        print(f"❌ Error generating music: {e}")
+        print(f"❌ Simple cut failed: {e}")
         return None
+
+
+def generate_historical_music(duration: float = 30.0, music_style: str = None,
+                             mood: str = None, era: str = None,
+                             region_name: str = None) -> Optional[Dict]:
+    """
+    Main function: Get royalty-free music from S3 and apply smart cutting
+    
+    Args:
+        duration: Target duration in seconds
+        music_style: Specific style (epic, emotional, etc.)
+        mood: Script mood for auto-selection
+        era: Historical era for auto-selection
+        region_name: AWS region
+    
+    Returns:
+        Dict with 'path' to cut music file and 'metadata'
+    """
+    from copyright_safety import get_copyright_tracker
+    
+    # Get bucket name from environment
+    bucket = os.environ.get('S3_BUCKET_NAME', '')
+    region = region_name or os.environ.get('AWS_REGION', 'us-east-1')
+    
+    if not bucket:
+        print("⚠️ S3_BUCKET_NAME not set, falling back to synthesis")
+        return generate_synthesis_fallback(duration)
+    
+    # List available music
+    music_by_category = list_available_music(bucket, region)
+    
+    if not music_by_category:
+        print("⚠️ No music found in S3, falling back to synthesis")
+        return generate_synthesis_fallback(duration)
+    
+    # Select appropriate music - use music_style as direct category from story_music_matcher
+    selected_key = select_music_for_mood(
+        music_by_category,
+        mood=mood,
+        era=era,
+        direct_category=music_style  # This comes from story_music_matcher analysis
+    )
+    
+    if not selected_key:
+        print("⚠️ Could not select music, falling back to synthesis")
+        return generate_synthesis_fallback(duration)
+    
+    # Download music
+    local_path = download_music(bucket, selected_key, region)
+    
+    if not local_path:
+        print("⚠️ Could not download music, falling back to synthesis")
+        return generate_synthesis_fallback(duration)
+    
+    # Apply smart cutting
+    cut_path = smart_cut_music(local_path, duration)
+    
+    if not cut_path:
+        print("⚠️ Could not cut music, using original with simple cut")
+        cut_path = simple_cut_music(local_path, duration)
+    
+    if cut_path and os.path.exists(cut_path):
+        # Track in copyright system
+        tracker = get_copyright_tracker()
+        tracker.add_music(
+            source="pixabay_royalty_free",
+            music_id=os.path.basename(selected_key),
+            title=f"Pixabay Music - {os.path.basename(selected_key)}",
+            artist="Pixabay AI",
+            license_type="Pixabay License - Royalty Free"
+        )
+        
+        file_size = os.path.getsize(cut_path)
+        print(f"✅ Music ready: {cut_path} ({file_size} bytes)")
+        
+        return {
+            "path": cut_path,
+            "metadata": {
+                "source": "pixabay_s3",
+                "original_file": os.path.basename(selected_key),
+                "license": "Pixabay License - Royalty Free, Commercial Use OK",
+                "safe_for_youtube": True
+            }
+        }
+    
+    return generate_synthesis_fallback(duration)
+
+
+def generate_synthesis_fallback(duration: float) -> Optional[Dict]:
+    """Fallback: Generate simple synthetic music if S3 music not available"""
+    from copyright_safety import get_copyright_tracker
+    import uuid
+    
+    unique_id = uuid.uuid4().hex[:8]
+    output_path = os.path.join(tempfile.gettempdir(), f"synth_music_{unique_id}.m4a")
+    
+    try:
+        # Simple melodic synthesis
+        filter_complex = (
+            f"aevalsrc='0.2*sin(2*PI*220*t)+0.15*sin(2*PI*330*t)+0.1*sin(2*PI*440*t)*sin(2*PI*2*t)'"
+            f":s=44100:d={duration}[raw];"
+            f"[raw]tremolo=f=3:d=0.3,lowpass=f=2000,"
+            f"afade=t=in:st=0:d=1.5,afade=t=out:st={duration-2}:d=2,"
+            f"volume=2.5[final]"
+        )
+        
+        cmd = [
+            get_ffmpeg_path(),
+            '-y',
+            '-f', 'lavfi',
+            '-i', f'anullsrc=r=44100:cl=stereo:d={duration}',
+            '-filter_complex', filter_complex,
+            '-map', '[final]',
+            '-c:a', 'aac',
+            '-b:a', '128k',
+            output_path
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        
+        if result.returncode == 0 and os.path.exists(output_path):
+            tracker = get_copyright_tracker()
+            tracker.add_music(
+                source="self_generated",
+                music_id=unique_id,
+                title="Synthesized Background",
+                artist="System Generated",
+                license_type="Original Content"
+            )
+            
+            print(f"✅ Fallback synthesis music: {output_path}")
+            return {
+                "path": output_path,
+                "metadata": {
+                    "source": "synthesis_fallback",
+                    "license": "Original Content - No Copyright",
+                    "safe_for_youtube": True
+                }
+            }
+    except Exception as e:
+        print(f"❌ Synthesis fallback failed: {e}")
+    
+    return None
 
 
 # Backward compatible functions
 def generate_ambient_music(duration: float = 30.0) -> Optional[Dict]:
-    """Backward compatible - now generates historical music"""
-    return generate_historical_music(duration=duration, music_style="nostalgic_piano")
+    return generate_historical_music(duration=duration, mood="documentary")
 
 def fetch_background_music(mood: str = "calm", duration_hint: float = 30.0, api_key: str = None) -> Optional[Dict]:
-    """Backward compatible - now generates historical music"""
     return generate_historical_music(duration=duration_hint, mood=mood)
 
 
 if __name__ == "__main__":
-    # Test music generation
-    print("Testing Historical Music Generator...")
-    
-    # Test different styles
-    for style in ["epic_orchestral", "nostalgic_piano", "war_drums"]:
-        print(f"\nTesting {style}...")
-        result = generate_historical_music(10.0, music_style=style)
-        if result:
-            print(f"  Generated: {result['path']}")
-        else:
-            print(f"  Failed!")
+    print("Testing Music Fetcher...")
+    # Test requires S3 bucket with music files
+    result = generate_historical_music(15.0, mood="epic")
+    if result:
+        print(f"Result: {result}")
+    else:
+        print("No music generated")

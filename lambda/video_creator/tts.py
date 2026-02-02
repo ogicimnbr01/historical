@@ -24,9 +24,9 @@ VOICE_BY_MOOD = {
         {"id": "Stephen", "engine": "neural", "rate": "94%", "pitch": "-3%"},
     ],
     "epic": [
-        # Dramatic voices for battles and conquests
-        {"id": "Brian", "engine": "neural", "rate": "88%", "pitch": "-10%"},
-        {"id": "Matthew", "engine": "neural", "rate": "85%", "pitch": "-12%"},
+        # Dramatic voices for battles and conquests - DEEP STORYTELLER MODE
+        {"id": "Brian", "engine": "neural", "rate": "80%", "pitch": "-18%"},
+        {"id": "Matthew", "engine": "neural", "rate": "78%", "pitch": "-20%"},
     ],
     "nostalgic": [
         # Warmer, more emotional for personal stories
@@ -99,6 +99,44 @@ PHONETIC_REPLACEMENTS = {
     "Constantinople": "Con-stan-tee-no-pull",
     "Bosphorus": "Boss-for-us",
     "Hagia Sophia": "Hah-gee-ah So-fee-ah",
+    
+    # Greek phrases (commonly used in historical content)
+    "Kai su, teknon": "Ky-soo, tek-non",
+    "Kai su teknon": "Ky-soo tek-non",
+    "teknon": "tek-non",
+    "Molon labe": "Moh-lon lah-bay",
+    "Thalassa": "Thah-lahs-sah",
+    
+    # Latin phrases
+    "Et tu, Brute": "Et too, Broo-tay",
+    "Et tu Brute": "Et too Broo-tay",
+    "Brute": "Broo-tay",
+    "Brutus": "Broo-tus",
+    "Veni, vidi, vici": "Vay-nee, vee-dee, vee-chee",
+    "Alea iacta est": "Ah-lay-ah yahk-tah est",
+    "Carpe diem": "Kar-pay dee-em",
+    "Memento mori": "Meh-men-toh mor-ee",
+    "Pax Romana": "Paks Ro-mah-nah",
+    
+    # Arabic/Persian names
+    "Selahaddin": "Seh-lah-had-deen",
+    "Eyyubi": "Ay-yoo-bee",
+    "Harun al-Rashid": "Hah-roon al-Rah-sheed",
+    "Ibn Battuta": "Ib-en Bat-too-tah",
+    "Al-Khwarizmi": "Al-Kwah-riz-mee",
+    
+    # Egyptian/Ancient names
+    "Cleopatra": "Klee-oh-pat-rah",
+    "Nefertiti": "Nef-er-tee-tee",
+    "Tutankhamun": "Too-tan-kah-moon",
+    "Ptolemy": "Tol-eh-mee",
+    "Pharaoh": "Fair-oh",
+    
+    # Japanese
+    "Shogun": "Show-gun",
+    "Samurai": "Sam-oo-rye",
+    "Bushido": "Boo-shee-doh",
+    "Seppuku": "Sep-poo-koo",
 }
 
 
@@ -144,11 +182,17 @@ def generate_voiceover(text: str, voice_id: str = None, mood: str = "documentary
         print(f"🗣️ Phonetic spelling applied for better pronunciation")
     
     # Add natural pauses for documentary pacing
-    # Slightly longer pauses for dramatic effect
-    processed_text = processed_text.replace("...", '<break time="600ms"/>')
-    processed_text = processed_text.replace(".", '.<break time="350ms"/>')
-    processed_text = processed_text.replace("?", '?<break time="400ms"/>')
-    processed_text = processed_text.replace("—", '<break time="200ms"/>—<break time="200ms"/>')
+    # Epic mood gets longer, more dramatic pauses
+    if mood == "epic":
+        processed_text = processed_text.replace("...", '<break time="800ms"/>')
+        processed_text = processed_text.replace(".", '.<break time="500ms"/>')
+        processed_text = processed_text.replace("?", '?<break time="600ms"/>')
+        processed_text = processed_text.replace("—", '<break time="300ms"/>—<break time="300ms"/>')
+    else:
+        processed_text = processed_text.replace("...", '<break time="600ms"/>')
+        processed_text = processed_text.replace(".", '.<break time="350ms"/>')
+        processed_text = processed_text.replace("?", '?<break time="400ms"/>')
+        processed_text = processed_text.replace("—", '<break time="200ms"/>—<break time="200ms"/>')
     
     # Add SSML for documentary narration style
     ssml_text = f"""

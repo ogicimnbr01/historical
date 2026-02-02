@@ -26,6 +26,20 @@ APPROVED_SOURCES = {
         "safe_for_youtube": True,
         "requires_attribution": False
     },
+    "pixabay_royalty_free": {
+        "name": "Pixabay Royalty-Free", 
+        "license": "Pixabay License (Free for commercial use)",
+        "url": "https://pixabay.com/service/license/",
+        "safe_for_youtube": True,
+        "requires_attribution": False
+    },
+    "pixabay_s3": {
+        "name": "Pixabay (S3 Cached)", 
+        "license": "Pixabay License (Free for commercial use)",
+        "url": "https://pixabay.com/service/license/",
+        "safe_for_youtube": True,
+        "requires_attribution": False
+    },
     "fallback": {
         "name": "Self-Generated",
         "license": "Original Content (No restrictions)",

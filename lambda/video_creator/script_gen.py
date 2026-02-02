@@ -9,6 +9,9 @@ import re
 import random
 import boto3
 
+# Similarity Dampener for content variety
+from similarity_dampener import generate_similarity_policy, get_prompt_injection, save_video_metadata
+
 # Era-specific context for visual generation
 ERA_VISUAL_STYLES = {
     "ancient": "ancient world, classical era, marble statues, bronze age, photorealistic painting style",
@@ -58,42 +61,96 @@ SYSTEM_PROMPT = """You are a master historical storyteller creating viral YouTub
 Your videos reveal fascinating, lesser-known facts about history that make viewers say "I never knew that!"
 
 🎯 CORE PHILOSOPHY:
-- Make history FASCINATING, not boring
-- Focus on human moments: what leaders ate, their quirks, unexpected facts
-- Create CONTRAST: "He conquered an empire, but couldn't resist..."
-- Every video should teach something surprising
+- Make history DRAMATIC, not just interesting
+- Every story needs TENSION, CRISIS, or THREAT
+- Focus on human weakness: fears, obsessions, sleepless nights, secret shames
+- Create ESCALATION: problem → danger → consequence
+- The viewer must feel "I NEED to know what happens"
 
-⚠️ THE 5 UNBREAKABLE RULES:
-1. NEVER be dry or academic ("In 1453, the Ottoman forces...")
-2. NEVER use obvious facts everyone knows
-3. ALWAYS start with a HOOK that creates curiosity
-4. ALWAYS include specific, vivid details (names, numbers, foods, colors)
+⚠️ THE 7 UNBREAKABLE RULES:
+1. NEVER be academic or "educational" tone ("In 1453, the Ottoman forces...")
+2. NEVER just give information - CREATE TENSION first
+3. ALWAYS start with a CRISIS, THREAT, PARADOX, or MYSTERY
+4. ALWAYS escalate the stakes before revealing the answer
 5. NEVER be longer than 15 seconds when read aloud
+6. MAXIMUM 7-8 WORDS PER SENTENCE - Punchy, short, impactful
+7. Hook must be a SCROLL STOPPER - not documentary intro
 
 📝 EXACT SCRIPT STRUCTURE (Total 15 seconds, 4 segments):
 
-1. HOOK (0-3s) - Create CONTRAST or CURIOSITY:
-   ✅ "He conquered Constantinople, but he couldn't sleep without his cat"
-   ✅ "The most powerful woman in history... was terrified of one thing"
-   ✅ "They called him 'The Magnificent' - here's what he ate for breakfast"
-   ❌ "Today we'll learn about Suleiman" (boring, no hook)
-   ❌ "Did you know that..." (overused, weak)
+1. HOOK (0-3s) - SCROLL STOPPER = SLAP IN THE FACE:
+   ⚡ THE HOOK MUST HIT LIKE A PUNCH. ONE SENTENCE. BRUTAL.
+   ⚡ Create "Wait, WHAT?!" reaction - not just "hmm interesting"
+   ⚡ The viewer must feel CHALLENGED, ACCUSED, or SHOCKED
+   ⚡ MAX 6-7 WORDS. Shorter = Harder.
+   
+   🔥 BRUTALLY EFFECTIVE HOOK FORMULAS:
+   
+   ACCUSATION HOOKS (hardest hitting):
+   ✅ "Shakespeare lied to you." (4 words - PERFECT)
+   ✅ "Everything you know is wrong." (5 words)
+   ✅ "The history books are lying." (5 words)
+   ✅ "You've been told a fairy tale." (6 words)
+   
+   MYTH-BUSTING HOOKS:
+   ✅ "The most famous last words? Fake." (6 words)
+   ✅ "That iconic quote? Never happened." (5 words)
+   ✅ "The legend is a lie." (5 words)
+   
+   PARADOX HOOKS:
+   ✅ "The deadliest emperor died of cheese." (6 words)
+   ✅ "He conquered the world. Died crying." (6 words)
+   ✅ "Savages? They bathed more than you." (6 words)
+   
+   ❌ "History says Caesar's last words were..." (TOO SOFT - sounds like intro)
+   ❌ "They were sworn enemies in the bloodiest war..." (TOO LONG, documentary)
+   ❌ "Did you know..." (BORING - question = weak)
 
-2. CONTEXT (3-7s) - Set the historical stage:
-   ✅ "Mehmed II, the young sultan who ended the Roman Empire..."
-   ✅ "At the height of the Ottoman Empire, breakfast wasn't just a meal..."
-   Brief but vivid. Place the viewer in that era.
+2. CONTEXT (3-7s) - ESCALATE THE DANGER:
+   ⚡ Don't just give context - RAISE THE STAKES
+   ⚡ Show what could go WRONG, who could DIE, what could FALL
+   
+   ✅ "At the height of his power, the Ottoman throne began to slip."
+   ✅ "His advisors watched. His enemies waited. His mind... was breaking."
+   ✅ "One wrong decision in this state meant war. Or worse."
+   
+   ❌ "He was an important ruler of the Ottoman Empire" (boring context)
+   ❌ "Sleeplessness became a serious issue" (academic, no tension)
 
-3. FACT (7-12s) - The surprising revelation:
-   ✅ "He personally drew the blueprints for his cannons"
-   ✅ "His favorite dish was simple beans and rice - the same as his soldiers"
-   This is the PAYOFF. Make it memorable and specific.
+3. FACT (7-12s) - THE REVELATION (with emotional weight):
+   ⚡ The surprising fact must feel EARNED after the tension
+   ⚡ Include SPECIFIC, VISUAL details that stick
+   
+   ✅ "He would walk the palace halls at 3am, alone, talking to shadows."
+   ✅ "His doctors tried opium, herbs, prayers. Nothing worked."
+   Make it VISUAL and HAUNTING. This is the payoff.
 
-4. OUTRO (12-15s) - Leave them thinking:
-   ✅ "Power changes people... but not always their taste"
-   ✅ "Sometimes the greatest conquerors are the simplest men"
-   ✅ "History remembers the crown, not the breakfast"
-   Short, poetic, shareable.
+4. OUTRO (12-15s) - THE TOK CÜMLE (punch line that echoes):
+   ⚡ END WITH A LINE THAT HITS LIKE A DOOR SLAMMING SHUT
+   ⚡ This line should HAUNT the viewer. They should want to screenshot it.
+   ⚡ MAX 5-6 WORDS. Shorter = More powerful. This is the KILL SHOT.
+   
+   🏆 BRUTAL FINAL PUNCH FORMULAS:
+   
+   DARK WISDOM (best for betrayal/death stories):
+   ✅ "The deepest wounds don't bleed." (5 words - PERFECT)
+   ✅ "Betrayal hurts more than steel." (5 words)
+   ✅ "Some knives never leave a scar." (6 words)
+   ✅ "Not all pain leaves marks." (5 words)
+   
+   COLD TRUTHS (best for myth-busting):
+   ✅ "Legends lie. History doesn't care." (5 words)
+   ✅ "The truth is always darker." (5 words)
+   ✅ "Reality is never that clean." (5 words)
+   
+   POWER STATEMENTS (best for empire/war stories):
+   ✅ "Empires die. Mercy survives." (4 words)
+   ✅ "Victory fades. Respect echoes." (4 words)
+   ✅ "Crowns rust. Fear doesn't." (4 words)
+   
+   ❌ "Some betrayals cut deeper than daggers." (TOO COMMON - overused phrase)
+   ❌ "And that's the story of this sultan." (weak, no resonance)
+   ❌ "Interesting, right?" (begging for engagement)
 
 🎨 VISUAL PROMPTS:
 For each segment, generate an image_prompt that describes what should be shown.
@@ -101,6 +158,19 @@ For each segment, generate an image_prompt that describes what should be shown.
 - Include era-appropriate styling (mention "black and white vintage" for 20th century)
 - Always end with "9:16 vertical composition"
 - Include the historical figure's name for AI recognition
+
+⚠️ CRITICAL: VISUAL-TEXT ALIGNMENT
+When the text mentions ABSTRACT concepts (myths, lies, fiction, legends), the image MUST reflect this:
+
+WRONG: "Shakespeare made that up" → Image of Caesar again
+RIGHT: "Shakespeare made that up" → "Quill pen writing on parchment, theatrical stage mask, playwright's desk, vintage theater setting"
+
+ABSTRACT VISUAL RULES:
+- Myth/Lie/Fiction → old books, quill pens, theater masks, scrolls
+- Time passing → hourglass, sundial, seasons changing
+- Memory/Legacy → statues, monuments, fading portraits
+- Power/Authority → crowns, thrones, scepters (without specific person)
+- Death/Ending → sunset, fallen leaves, empty throne, closed book
 
 Example image_prompt for Ottoman era:
 "Sultan Suleiman the Magnificent sitting at breakfast table, Ottoman palace interior, 16th century, oriental painting style, golden light, 9:16 vertical composition"
@@ -121,7 +191,7 @@ Topic: "Atatürk's favorite foods"
         {"start": 0, "end": 3, "text": "He built a nation from the ashes of an empire.", "image_prompt": "Mustafa Kemal Atatürk standing heroically, Turkish flag, 1920s black and white vintage photograph style, dramatic lighting, 9:16 vertical composition"},
         {"start": 3, "end": 7, "text": "But at dinner, Mustafa Kemal Atatürk wanted just one thing: his mother's home cooking.", "image_prompt": "Mustafa Kemal Atatürk sitting at modest dinner table, 1930s Turkish home interior, warm lighting, vintage photograph style, sepia tone, 9:16 vertical composition"},
         {"start": 7, "end": 12, "text": "While world leaders dined on caviar, he asked for beans and rice.", "image_prompt": "Simple Turkish dinner table with beans pilaf bread, modest setting, 1930s style, warm homey atmosphere, vintage photograph, 9:16 vertical composition"},
-        {"start": 12, "end": 15, "text": "The man who changed everything... never changed his taste.", "image_prompt": "Mustafa Kemal Atatürk portrait, thoughtful expression, 1930s black and white photograph, film grain, presidential, 9:16 vertical composition"}
+        {"start": 12, "end": 15, "text": "The man who changed everything... Would you give up luxury for your roots?", "image_prompt": "Mustafa Kemal Atatürk portrait, thoughtful expression, 1930s black and white photograph, film grain, presidential, 9:16 vertical composition"}
     ],
     "mood": "nostalgic",
     "era": "early_20th",
@@ -169,6 +239,14 @@ def generate_history_script(topic: str = None, era: str = None, region_name: str
     # Get era-specific visual style
     era_style = ERA_VISUAL_STYLES.get(selected_topic["era"], ERA_VISUAL_STYLES["early_20th"])
     
+    # Generate similarity policy (avoid repetitive content)
+    try:
+        similarity_policy = generate_similarity_policy(region_name=region)
+        similarity_injection = get_prompt_injection(similarity_policy)
+    except Exception as e:
+        print(f"⚠️ Similarity check skipped: {e}")
+        similarity_injection = ""
+    
     user_prompt = f"""Create a 15 second YouTube Short script about: {selected_topic["topic"]}
 
 HISTORICAL FIGURE: {selected_topic.get("figure", "Unknown")}
@@ -201,7 +279,7 @@ Return a JSON object with:
 - Include era-specific styling: {era_style}
 - Always end with "9:16 vertical composition"
 - Be specific and vivid, good for AI image generation
-
+{similarity_injection}
 Total script should be ~40-50 words, readable in 15 seconds at natural pace.
 Make it FASCINATING. Make viewers stop scrolling."""
 
@@ -219,9 +297,17 @@ Make it FASCINATING. Make viewers stop scrolling."""
         ]
     }
     
+    # Get model ID from environment or use default (secure - not logged)
+    # Claude 4.5 Sonnet - cross-region inference profile (us. prefix required)
+    model_id = os.environ.get('BEDROCK_MODEL_ID', 'us.anthropic.claude-sonnet-4-5-20250929-v1:0')
+    
+    # Log masked model info for security
+    model_family = model_id.split('.')[1].split('-')[0] if '.' in model_id else 'claude'
+    print(f"🤖 Using AI model: {model_family}-***")
+    
     # Call Claude via Bedrock
     response = bedrock.invoke_model(
-        modelId="us.anthropic.claude-sonnet-4-20250514-v1:0",
+        modelId=model_id,
         body=json.dumps(request_body),
         contentType="application/json",
         accept="application/json"
@@ -237,6 +323,10 @@ Make it FASCINATING. Make viewers stop scrolling."""
         script = json.loads(json_match.group())
     else:
         script = json.loads(content)
+    
+    # ========== HOOK QUALITY VALIDATION ==========
+    # Check for weak hook patterns and enforce 15s minimum
+    script = validate_and_fix_script(script, selected_topic)
     
     # Ensure we have the era info
     if 'era' not in script:
@@ -260,6 +350,172 @@ Make it FASCINATING. Make viewers stop scrolling."""
     
     print(f"📜 Generated history script: {script['title']}")
     print(f"   Era: {script['era']}, Mood: {script['mood']}")
+    
+    # Save to similarity history for future dampening
+    try:
+        save_video_metadata(script, region_name=region)
+    except Exception as e:
+        print(f"⚠️ Failed to save similarity history: {e}")
+    
+    return script
+
+
+def validate_and_fix_script(script: dict, topic_info: dict) -> dict:
+    """
+    Validate script quality and ensure minimum requirements.
+    
+    Checks:
+    1. Hook must NOT contain weak patterns (blacklist)
+    2. Hook SHOULD match strong patterns (whitelist bonus)
+    3. Hook must be max 12 words (8-9 is golden zone)
+    4. Smart 15s handling - only extend if ending is poetic
+    5. Flexible word count - check density, not just count
+    """
+    
+    # ===== WEAK HOOK PATTERNS (BLACKLIST) =====
+    WEAK_PATTERNS = [
+        r"^did you know",
+        r"^today we",
+        r"^let me tell you",
+        r"^in this video",
+        r"^have you ever wondered",
+        r"^what if i told you",
+        r"^imagine if",
+        r"^here's a fun fact",
+        r"^fun fact:",
+        r"^everyone knows",
+        r"^you probably know",
+    ]
+    
+    # ===== STRONG HOOK PATTERNS (WHITELIST) =====
+    # These patterns drive high retention - reward them
+    STRONG_PATTERNS = [
+        r"was a lie",
+        r"never happened",
+        r"got this wrong",
+        r"didn't happen",
+        r"weren't what you",
+        r"wasn't what you",
+        r"history lied",
+        r"didn't die",
+        r"didn't say",
+        r"everyone remembers.*wrong",
+        r"the truth is",
+    ]
+    
+    # ===== CHECK HOOK QUALITY =====
+    hook_score = 0  # Track hook quality
+    
+    if 'segments' in script and len(script['segments']) > 0:
+        hook_text = script['segments'][0].get('text', '').lower().strip()
+        
+        # Check for weak patterns (blacklist)
+        for pattern in WEAK_PATTERNS:
+            if re.match(pattern, hook_text, re.IGNORECASE):
+                print(f"❌ WEAK HOOK DETECTED: '{hook_text[:50]}...'")
+                print(f"   Pattern matched: {pattern}")
+                hook_score -= 2
+        
+        # Check for strong patterns (whitelist) - BONUS
+        for pattern in STRONG_PATTERNS:
+            if re.search(pattern, hook_text, re.IGNORECASE):
+                print(f"🔥 STRONG HOOK PATTERN: '{pattern}' found!")
+                hook_score += 2
+                break  # Only count once
+        
+        # Check hook word count
+        hook_words = len(hook_text.split())
+        if hook_words <= 9:
+            print(f"✅ HOOK GOLDEN ZONE: {hook_words} words (ideal 8-9)")
+            hook_score += 1
+        elif hook_words <= 12:
+            print(f"✅ HOOK OK: {hook_words} words")
+        else:
+            print(f"⚠️ HOOK TOO LONG: {hook_words} words (max 12)")
+            hook_score -= 1
+        
+        # Log final hook score
+        if hook_score >= 2:
+            print(f"🏆 HOOK QUALITY: EXCELLENT ({hook_score})")
+        elif hook_score >= 0:
+            print(f"✅ HOOK QUALITY: GOOD ({hook_score})")
+        else:
+            print(f"⚠️ HOOK QUALITY: NEEDS WORK ({hook_score})")
+    
+    # ===== SMART 15 SECOND HANDLING =====
+    # Only extend if ending has poetic content
+    if 'segments' in script:
+        last_segment = script['segments'][-1]
+        last_text = last_segment.get('text', '').lower()
+        
+        # Check if ending is poetic/memorable (worth extending)
+        POETIC_INDICATORS = [
+            r"legend",
+            r"history",
+            r"remember",
+            r"never forget",
+            r"sources speak",
+            r"truth",
+            r"\.\.\.",  # Ellipsis
+            r"\?$",     # Question mark at end
+            r"would you",
+            r"could you",
+        ]
+        
+        is_poetic_ending = any(re.search(p, last_text) for p in POETIC_INDICATORS)
+        current_end = last_segment.get('end', 15)
+        
+        if current_end < 15:
+            if is_poetic_ending:
+                print(f"✅ EXTENDING to 15s - poetic ending detected")
+                last_segment['end'] = 15
+            else:
+                print(f"⚡ KEEPING SHORT ({current_end}s) - no poetic ending, shorter is better")
+                # Don't extend - let it be punchy
+        
+        # Ensure proper segment timing based on actual duration
+        total_duration = last_segment.get('end', 15)
+        if total_duration >= 15:
+            expected_timings = [(0, 3), (3, 7), (7, 12), (12, 15)]
+        else:
+            # Proportional timing for shorter videos
+            segment_ratios = [0.2, 0.27, 0.33, 0.2]  # 20%, 27%, 33%, 20%
+            expected_timings = []
+            current = 0
+            for ratio in segment_ratios:
+                duration = total_duration * ratio
+                expected_timings.append((current, current + duration))
+                current += duration
+        
+        for i, (expected_start, expected_end) in enumerate(expected_timings):
+            if i < len(script['segments']):
+                script['segments'][i]['start'] = round(expected_start, 1)
+                script['segments'][i]['end'] = round(expected_end, 1)
+    
+    # ===== FLEXIBLE WORD COUNT (DENSITY CHECK) =====
+    if 'voiceover_text' in script:
+        voiceover = script['voiceover_text']
+        word_count = len(voiceover.split())
+        
+        # Count sentences (rough)
+        sentences = len(re.findall(r'[.!?]', voiceover))
+        sentences = max(sentences, 1)  # Avoid division by zero
+        
+        # Calculate density (words per sentence)
+        density = word_count / sentences
+        
+        if word_count < 28:
+            print(f"⚠️ VOICEOVER VERY SHORT: {word_count} words")
+        elif word_count < 35:
+            # Check density - high density short videos are OK
+            if density <= 7:
+                print(f"✅ VOICEOVER HIGH DENSITY: {word_count} words, {density:.1f} words/sentence - ACCEPTABLE")
+            else:
+                print(f"⚠️ VOICEOVER SHORT: {word_count} words, density {density:.1f} - consider adding content")
+        elif word_count > 60:
+            print(f"⚠️ VOICEOVER TOO LONG: {word_count} words (max 60 for 15s)")
+        else:
+            print(f"✅ Voiceover length OK: {word_count} words, {density:.1f} words/sentence")
     
     return script
 

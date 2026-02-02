@@ -381,14 +381,16 @@ HISTORICAL_FIGURES_PHYSICAL = {
     
     # === MONGOL EMPIRE ===
     "cengiz han": {
-        "physical": "powerful warrior in fifties, weathered face, long gray braided hair, fierce narrow eyes, prominent cheekbones, thick beard",
-        "attire": "ornate Mongol armor with fur trim, golden helmet with horsehair plume, leather boots",
+        # SAFE: Avoid warrior/battle/fierce - use noble/artistic descriptions
+        "physical": "elderly Asian ruler, weathered wise face, long gray braided hair, deep-set contemplative eyes, prominent cheekbones, distinguished beard",
+        "attire": "ornate silk robes with fur trim, golden ceremonial headdress, traditional Mongol leather boots",
         "era": "medieval",
         "style": "charcoal_epic"
     },
     "genghis khan": {
-        "physical": "Mongol emperor, weathered warrior face, long braided hair, fierce eyes, battle-scarred",
-        "attire": "golden Mongol armor, fur-lined cape, warrior helmet",
+        # SAFE: Avoid warrior/battle/fierce - focus on ruler/statesman
+        "physical": "13th century Asian ruler, weathered noble face, traditional braided hair, wise penetrating gaze",
+        "attire": "golden ceremonial Mongol robes, fur-lined imperial cape, ornate headdress",
         "era": "medieval",
         "style": "charcoal_epic"
     },
@@ -661,10 +663,14 @@ def sanitize_prompt(prompt: str) -> Tuple[str, bool, list]:
     
     for term, replacement in sorted_terms:
         if term in prompt_lower:
-            pattern = re.compile(re.escape(term), re.IGNORECASE)
-            sanitized = pattern.sub(replacement, sanitized)
-            prompt_lower = sanitized.lower()
-            changes.append(f"'{term}' → '{replacement}'")
+            # Use word boundary to avoid partial matches (e.g., 'war' in 'warrior')
+            pattern = re.compile(r'\b' + re.escape(term) + r'\b', re.IGNORECASE)
+            new_sanitized = pattern.sub(replacement, sanitized)
+            # Only count as change if something actually changed
+            if new_sanitized != sanitized:
+                sanitized = new_sanitized
+                prompt_lower = sanitized.lower()
+                changes.append(f"'{term}' → '{replacement}'")
     
     # Truncate if too long
     if len(sanitized) > MAX_PROMPT_LENGTH:

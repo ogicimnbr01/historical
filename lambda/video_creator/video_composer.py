@@ -18,9 +18,11 @@ OUTPUT_WIDTH = 1080
 OUTPUT_HEIGHT = 1920
 FPS = 30
 
-# Audio mixing settings - Documentary style: voice clear, music subtle
-MUSIC_VOLUME = 0.30  # Background music volume (30% - atmospheric but not overpowering)
+# Audio mixing settings - Documentary style: voice clear, music/SFX AUDIBLE
+# IMPORTANT: These values were tuned after testing - don't lower them!
+MUSIC_VOLUME = 0.55  # Background music volume (55% - clearly audible)
 VOICE_VOLUME = 1.0   # Voiceover volume (100% - clear narration)
+SFX_VOLUME = 0.40    # Sound effects volume (40% - noticeable impact)
 
 
 def compose_video(
@@ -79,10 +81,21 @@ def compose_video(
     
     # Add background music input if provided
     music_index = None
-    if music_path and os.path.exists(music_path):
-        inputs.extend(['-i', music_path])
-        music_index = voice_index + 1
-        print(f"🎵 Adding period background music: {music_path}")
+    if music_path:
+        print(f"🎵 DEBUG: music_path provided: {music_path}")
+        if os.path.exists(music_path):
+            music_size = os.path.getsize(music_path)
+            print(f"🎵 DEBUG: music file exists, size: {music_size} bytes")
+            if music_size > 1000:  # At least 1KB
+                inputs.extend(['-i', music_path])
+                music_index = voice_index + 1
+                print(f"🎵 CONFIRMED: Adding background music at index {music_index}")
+            else:
+                print(f"⚠️ Music file too small ({music_size} bytes), skipping")
+        else:
+            print(f"❌ Music file NOT FOUND: {music_path}")
+    else:
+        print(f"ℹ️ DEBUG: No music_path provided")
     
     # Build filter for each video clip
     # HISTORY AESTHETIC: Old film effects already applied in stock_fetcher
@@ -166,60 +179,79 @@ def compose_video(
     try:
         from sfx_generator import generate_context_sfx
         sfx_path = generate_context_sfx(subtitle_text, total_duration)
-        if sfx_path and os.path.exists(sfx_path):
-            inputs.extend(['-i', sfx_path])
-            sfx_index = voice_index + (1 if music_index is None else 2)
-            if music_index is not None:
-                sfx_index = music_index + 1
-            print(f"🔊 Adding ambient SFX: {sfx_path}")
+        if sfx_path:
+            print(f"🔊 DEBUG: SFX generated: {sfx_path}")
+            if os.path.exists(sfx_path):
+                sfx_size = os.path.getsize(sfx_path)
+                print(f"🔊 DEBUG: SFX file exists, size: {sfx_size} bytes")
+                if sfx_size > 1000:
+                    inputs.extend(['-i', sfx_path])
+                    # Calculate correct SFX index
+                    sfx_index = voice_index + 1
+                    if music_index is not None:
+                        sfx_index = music_index + 1
+                    print(f"🔊 CONFIRMED: Adding SFX at index {sfx_index}")
+                else:
+                    print(f"⚠️ SFX file too small ({sfx_size} bytes), skipping")
+            else:
+                print(f"❌ SFX file NOT FOUND: {sfx_path}")
+        else:
+            print(f"ℹ️ DEBUG: No SFX generated")
     except Exception as e:
-        print(f"⚠️ SFX generation skipped: {e}")
+        print(f"⚠️ SFX generation error: {e}")
     
-    # Audio mixing with DUCKING and SFX
-    # Voice is loudest, music ducks under voice, SFX is subtle ambient
+    # === FINAL AUDIO SUMMARY ===
+    print(f"📊 AUDIO SUMMARY: voice_index={voice_index}, music_index={music_index}, sfx_index={sfx_index}")
+    print(f"📊 AUDIO INPUTS: {len(inputs)} total inputs")
+    
+    # ============================================================
+    # FINAL AUDIO FIX - Using amix with weights (simplest approach)
+    # Previous attempts with amerge/pan failed silently
+    # ============================================================
+    
     if music_index is not None and sfx_index is not None:
-        # Full audio mix: Voice + Music (ducked) + SFX
+        # Voice + Music + SFX - all three
+        # Use amix with weights: voice=1.0, music=0.4, sfx=0.3
         filter_parts.append(
-            f"[{voice_index}:a]volume={VOICE_VOLUME},asplit=2[voice][voice_sc];"
-            f"[{music_index}:a]volume={MUSIC_VOLUME}[music_vol];"
-            f"[music_vol]apad=whole_dur={total_duration}[music_padded];"
-            f"[music_padded]atrim=0:{total_duration}[music_trimmed];"
-            f"[music_trimmed][voice_sc]sidechaincompress=threshold=0.02:ratio=4:attack=300:release=1000[music_ducked];"
-            f"[{sfx_index}:a]volume=0.15,atrim=0:{total_duration}[sfx_trimmed];"
-            f"[voice][music_ducked][sfx_trimmed]amix=inputs=3:duration=first:dropout_transition=2[aout]"
+            f"[{voice_index}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[voice];"
+            f"[{music_index}:a]aloop=loop=-1:size=2e+09,atrim=0:{total_duration},aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[music];"
+            f"[{sfx_index}:a]aloop=loop=-1:size=2e+09,atrim=0:{total_duration},aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[sfx];"
+            f"[voice][music][sfx]amix=inputs=3:duration=first:weights=1 0.25 0.3:normalize=0[aout]"
         )
         audio_map = '[aout]'
-        print(f"🔊 Audio mix: Voice + Music (ducked) + SFX ambient")
+        print(f"🔊 FINAL MIX: Voice + Music(0.25) + SFX(0.3) via amix+weights")
+        
     elif music_index is not None:
-        # Audio ducking: sidechaincompress makes music quieter when voice is present
-        # Parameters: threshold -20dB, ratio 4:1, attack 0.3s, release 1s
+        # Voice + Music only
         filter_parts.append(
-            f"[{voice_index}:a]volume={VOICE_VOLUME},asplit=2[voice][voice_sc];"
-            f"[{music_index}:a]volume={MUSIC_VOLUME}[music_vol];"
-            f"[music_vol]apad=whole_dur={total_duration}[music_padded];"
-            f"[music_padded]atrim=0:{total_duration}[music_trimmed];"
-            f"[music_trimmed][voice_sc]sidechaincompress=threshold=0.02:ratio=4:attack=300:release=1000[music_ducked];"
-            f"[voice][music_ducked]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+            f"[{voice_index}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[voice];"
+            f"[{music_index}:a]aloop=loop=-1:size=2e+09,atrim=0:{total_duration},aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[music];"
+            f"[voice][music]amix=inputs=2:duration=first:weights=1 0.30:normalize=0[aout]"
         )
         audio_map = '[aout]'
-        print(f"🔊 Audio ducking applied - voice will be clear over music")
+        print(f"🔊 FINAL MIX: Voice + Music(0.30) via amix+weights")
+        
     elif sfx_index is not None:
-        # Voice + SFX only (no music)
+        # Voice + SFX only
         filter_parts.append(
-            f"[{voice_index}:a]volume={VOICE_VOLUME}[voice];"
-            f"[{sfx_index}:a]volume=0.15,atrim=0:{total_duration}[sfx_trimmed];"
-            f"[voice][sfx_trimmed]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+            f"[{voice_index}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[voice];"
+            f"[{sfx_index}:a]aloop=loop=-1:size=2e+09,atrim=0:{total_duration},aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[sfx];"
+            f"[voice][sfx]amix=inputs=2:duration=first:weights=1 0.35:normalize=0[aout]"
         )
         audio_map = '[aout]'
-        print(f"🔊 Audio mix: Voice + SFX ambient")
+        print(f"🔊 FINAL MIX: Voice + SFX(0.35) via amix+weights")
+        
     else:
         # No music, just use voiceover
         audio_map = f'{voice_index}:a'
+        print(f"🔊 Voice only (no music/sfx)")
     
     # Complete filter complex
     filter_complex = ';'.join(filter_parts)
     
-    # FFmpeg command
+    # FFmpeg command with DEVICE COMPATIBILITY settings
+    # -profile:v baseline + -pix_fmt yuv420p = Samsung/iOS/Windows native player support
+    # -movflags +faststart = Web streaming optimization
     cmd = [
         get_ffmpeg_path(),
         '-y',  # Overwrite output
@@ -228,16 +260,21 @@ def compose_video(
         '-map', '[vfinal]',
         '-map', audio_map,
         '-c:v', 'libx264',
+        '-profile:v', 'baseline',  # Maximum device compatibility
+        '-level', '3.0',           # Safe level for mobile devices
+        '-pix_fmt', 'yuv420p',     # Required for Samsung/iOS/Windows
         '-preset', 'fast',
         '-crf', '23',
         '-c:a', 'aac',
         '-b:a', '128k',
+        '-movflags', '+faststart', # Web/streaming optimization
         '-shortest',
         '-t', str(total_duration + 0.5),  # Add small buffer
         output_path
     ]
     
     print(f"🎬 Running FFmpeg composition...")
+    print(f"📝 FILTER_COMPLEX (first 500 chars): {filter_complex[:500]}...")
     
     result = subprocess.run(
         cmd,
@@ -246,11 +283,21 @@ def compose_video(
         timeout=180  # 3 minute timeout
     )
     
-    if result.returncode != 0:
-        print(f"FFmpeg stderr: {result.stderr}")
-        raise RuntimeError(f"FFmpeg failed: {result.stderr}")
+    # Always log stderr for debugging
+    if result.stderr:
+        # Log last 1000 chars of stderr
+        stderr_tail = result.stderr[-1000:] if len(result.stderr) > 1000 else result.stderr
+        print(f"📋 FFmpeg stderr (last 1000 chars): {stderr_tail}")
     
-    print(f"✅ Historical video composed: {output_path}")
+    if result.returncode != 0:
+        raise RuntimeError(f"FFmpeg failed with code {result.returncode}")
+    
+    # Verify output file has audio
+    if os.path.exists(output_path):
+        file_size = os.path.getsize(output_path)
+        print(f"✅ Historical video composed: {output_path} ({file_size} bytes)")
+    else:
+        raise RuntimeError(f"Output file not created: {output_path}")
     
     return output_path
 

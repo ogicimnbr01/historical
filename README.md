@@ -1,121 +1,137 @@
-# 🎬 AI YouTube Shorts Generator
+# 🎬 History YouTube Shorts Generator
 
-Otomatik absürt, dopamin-patlatıcı YouTube Shorts videoları üreten AWS serverless sistem.
+Automated AI-powered YouTube Shorts video generator focused on historical content. Creates engaging, viral-ready 15-second videos with AI-generated scripts, images, voiceover, and music.
 
-## ✨ Özellikler
+## 🏗️ Architecture
 
-- ✅ **Haftada 4 video** otomatik üretim
-- ✅ **AWS Bedrock (Claude 3.5)** ile absürt senaryo üretimi
-- ✅ **Pixabay** ücretsiz stock videolar (API key gerekmez!)
-- ✅ **AWS Polly** doğal İngilizce seslendirme
-- ✅ **FFmpeg** ile video montaj
-- ✅ **Email bildirimi** video hazır olunca
+```
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│  EventBridge    │────▶│   Lambda         │────▶│   S3 Bucket     │
+│  (Scheduler)    │     │  (Video Creator) │     │  (Videos/Audio) │
+└─────────────────┘     └──────────────────┘     └─────────────────┘
+                               │
+                    ┌──────────┼──────────┐
+                    ▼          ▼          ▼
+              ┌─────────┐ ┌─────────┐ ┌─────────┐
+              │ Bedrock │ │  Titan  │ │  Polly  │
+              │ (Claude)│ │ (Image) │ │  (TTS)  │
+              └─────────┘ └─────────┘ └─────────┘
+```
 
-## 💰 Maliyet
+## 🚀 Features
 
-| Servis | Aylık (~16 video) |
-|--------|-------------------|
-| AWS Bedrock (Claude) | ~$0.50 |
-| AWS Polly | ~$0.03 |
-| AWS Lambda | Free tier |
-| AWS S3 | ~$0.05 |
-| **Toplam** | **~$0.60/ay** |
+### Content Generation
+- **AI Script Generation** - Claude-powered historical storytelling
+- **Hook Quality Control** - Blacklist/whitelist patterns for viral hooks
+- **15s Guarantee** - Smart timing with poetic ending detection
 
-✅ $50 ile **6+ yıl** kullanım!
+### Video Production
+- **AI Images** - Amazon Titan image generation
+- **Text-to-Speech** - Amazon Polly with epic narrator voice
+- **Dynamic Music** - Context-aware background music with climax
+- **Event SFX** - Sword, cannon, wave sounds based on content
+- **Animated Subtitles** - Word-by-word reveal with effects
 
-## 🚀 Kurulum
+### Content Variety
+- **Similarity Dampener** - Prevents repetitive content across videos
+- **Dynamic Thresholds** - Adapts to history count
+- **Family-based Patterns** - Hook and ending style variation
 
-### Gereksinimler
+## 📁 Project Structure
 
-- AWS CLI yapılandırılmış (`aws configure`)
-- Terraform >= 1.0
+```
+historical/
+├── terraform/           # Infrastructure as Code
+│   ├── main.tf
+│   ├── lambda.tf
+│   ├── s3.tf
+│   └── eventbridge.tf
+│
+└── lambda/
+    └── video_creator/
+        ├── main.py              # Lambda handler
+        ├── script_gen.py        # AI script generation
+        ├── video_composer.py    # FFmpeg video assembly
+        ├── subtitle_gen.py      # ASS subtitle creation
+        ├── audio_gen.py         # TTS & music generation
+        └── similarity_dampener.py  # Content variety system
+```
+
+## 🛠️ Setup
+
+### Prerequisites
+- AWS CLI configured
+- Terraform installed
 - Python 3.11+
-- **Bedrock Model Access** etkinleştirilmiş (Claude için)
 
-### 1. Bedrock Erişimini Aç
+### Deployment
 
-AWS Console → Bedrock → Model Access → Claude 3.5 Sonnet'i etkinleştir.
-
-### 2. Setup Script'i Çalıştır
-
-```powershell
-cd "shorts"
-.\setup.ps1
-```
-
-### 3. Email Adresini Gir
-
-```powershell
-notepad terraform\terraform.tfvars
-```
-
-```hcl
-notification_email = "your-email@example.com"
-aws_region         = "us-east-1"
-```
-
-### 4. Deploy
-
-```powershell
-cd terraform
+```bash
+cd historical/terraform
 terraform init
-terraform plan
 terraform apply
 ```
 
-### 5. Email Doğrulama
+### Manual Invocation
 
-SNS subscription email'ini onayla.
-
-## 📁 Proje Yapısı
-
-```
-shorts/
-├── terraform/           # AWS altyapısı
-│   ├── main.tf         # S3, SNS, EventBridge
-│   ├── lambda.tf       # Lambda function
-│   ├── iam.tf          # IAM (Bedrock, Polly, S3, SNS)
-│   └── variables.tf
-│
-├── lambda/video_creator/
-│   ├── handler.py       # Ana orchestrator
-│   ├── script_gen.py    # Bedrock Claude senaryo
-│   ├── stock_fetcher.py # Pixabay stock video
-│   ├── tts.py           # AWS Polly TTS
-│   └── video_composer.py# FFmpeg montaj
-│
-└── setup.ps1            # Windows setup
-```
-
-## ⏰ Video Zamanlaması
-
-- Pazartesi 13:00 (TR)
-- Çarşamba 13:00
-- Cuma 13:00
-- Pazar 13:00
-
-## 🔧 Manuel Test
-
-```powershell
-# Lambda'yı manuel tetikle
-aws lambda invoke `
-  --function-name youtube-shorts-video-generator `
-  --payload '{}' `
+```bash
+# Async invoke (recommended)
+aws lambda invoke \
+  --function-name youtube-shorts-video-generator \
+  --payload "{}" \
+  --invocation-type Event \
+  --region us-east-1 \
   response.json
-
-# Logları izle
-aws logs tail /aws/lambda/youtube-shorts-video-generator --follow
 ```
 
-## 📧 Video Gelince
+## 📊 Similarity Dampener
 
-1. Email'deki link ile videoyu indir
-2. YouTube Studio → Create → Upload Short
-3. Yayınla! 🚀
+Prevents content repetition across videos:
 
-## 🛑 Sistemi Durdurma
+| Pattern Type | Threshold | Action |
+|--------------|-----------|--------|
+| Hook | 30% of last N | BAN |
+| Ending | 20% / 30% | PENALIZE / BAN |
+| Break Line | 30% of last N | BAN |
 
-```powershell
-cd terraform
-terraform destroy
+**Dynamic Features:**
+- `MIN_HISTORY_FOR_BAN = 4` - No bans with < 4 videos
+- `escape_hatch` - Allows pattern rewriting when stuck
+- ISO timestamp sorting for deterministic history
+
+## 🎯 Hook Patterns
+
+### Blacklisted (Weak)
+- "Did you know..."
+- "Today we'll learn..."
+- "Have you ever wondered..."
+
+### Whitelisted (Strong)
+- `contradiction`: "X was a lie" / "This never happened"
+- `revelation`: "The truth is..." / "History lied about X"
+- `challenge`: "Everyone remembers this wrong"
+- `contrast`: "He conquered X, but..."
+
+## 📈 Monitoring
+
+Watch these CloudWatch metrics after deployment:
+
+| Metric | Healthy Range | Alert If |
+|--------|---------------|----------|
+| `escape_hatch_used` | ≤ 10% | > 25% |
+| `hook_ban_rate` | ≤ 20% | > 40% |
+| `ending_penalize_rate` | ≤ 30% | > 50% |
+
+## 🔧 Configuration
+
+Environment variables (set in `terraform.tfvars`):
+
+```hcl
+aws_region     = "us-east-1"
+s3_bucket_name = "youtube-shorts-videos"
+schedule       = "rate(6 hours)"
 ```
+
+## 📝 License
+
+Private project - All rights reserved.

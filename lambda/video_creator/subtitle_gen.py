@@ -78,77 +78,116 @@ def create_subtitle_file(
     
     events = []
     
-    # Split text into sentences
-    segments = re.split(r'([.?!])', narration_text)
+    # Split text into sentences - more robust approach
+    # First, normalize ellipsis and other punctuation
+    normalized_text = narration_text.replace('...', '…')  # Normalize ellipsis
+    normalized_text = normalized_text.replace('..', '.')   # Fix double dots
     
-    # Recombine segments with their punctuation
+    # Split on sentence-ending punctuation, keeping the punctuation
+    segments = re.split(r'(?<=[.?!…])\s+', normalized_text)
+    
+    # Filter out empty strings and standalone punctuation
     phrases = []
-    current_phrase = ""
-    
     for seg in segments:
-        current_phrase += seg
-        if seg in '.?!':
-            if current_phrase.strip():
-                phrases.append(current_phrase.strip())
-            current_phrase = ""
-            
-    if current_phrase.strip():
-        phrases.append(current_phrase.strip())
-        
+        seg = seg.strip()
+        # Skip empty strings or strings that are only punctuation
+        if seg and len(seg) > 1 and not all(c in '.?!…, ' for c in seg):
+            phrases.append(seg)
+        elif seg and len(seg) == 1 and seg not in '.?!…':
+            # Single character that's not punctuation - keep it
+            phrases.append(seg)
+    
     if not phrases:
-        phrases = [narration_text]
+        phrases = [narration_text.strip()]
     
-    # Calculate timing
-    phrase_duration = total_duration / len(phrases)
+    # Calculate timing based on word count (weighted duration)
+    # Longer phrases get proportionally more time
+    word_counts = [len(phrase.split()) for phrase in phrases]
+    total_words = sum(word_counts) or 1
     
+    # Calculate weighted durations
+    phrase_timings = []
+    current_time = 0.0
     for i, phrase in enumerate(phrases):
-        start_time = i * phrase_duration
-        end_time = (i + 1) * phrase_duration
-        
+        # Weight by word count with minimum duration of 1.5 seconds
+        weight = word_counts[i] / total_words
+        phrase_duration = max(1.5, total_duration * weight)
+        phrase_timings.append((current_time, current_time + phrase_duration, phrase))
+        current_time += phrase_duration
+    
+    # Normalize timings to fit total duration
+    if current_time > total_duration:
+        scale = total_duration / current_time
+        phrase_timings = [(s * scale, e * scale, p) for s, e, p in phrase_timings]
+    
+    for i, (start_time, end_time, phrase) in enumerate(phrase_timings):
         # Choose style based on position
         if i == 0:
             style = "Hook"  # First sentence - dramatic
-        elif i == len(phrases) - 1:
+        elif i == len(phrase_timings) - 1:
             style = "Ending"  # Last sentence - reflective
         elif "but" in phrase.lower() or "however" in phrase.lower():
             style = "Emphasis"  # Contrast sentences
         else:
             style = "Default"
         
-        safe_phrase = escape_ass_text(phrase)
+        # KARAOKE EFFECT: Word-by-word highlighting
+        # Calculate duration per word for karaoke timing
+        words = phrase.split()
+        phrase_duration = end_time - start_time
         
-        # Animation effects:
-        # \\fad(300,400) - fade in/out
-        # \\move(x1,y1,x2,y2) - slide animation
-        # \\t(\\fscx110) - scale animation
+        if len(words) > 1:
+            # Use karaoke fill effect (\kf) for smooth word-by-word highlighting
+            # Calculate centiseconds per word (ASS karaoke uses centiseconds)
+            cs_per_word = int((phrase_duration * 100) / len(words))
+            
+            # Build karaoke text with \kf tags
+            karaoke_parts = []
+            for j, word in enumerate(words):
+                safe_word = escape_ass_text(word)
+                # \kf = karaoke fill (smooth sweep), value is duration in centiseconds
+                karaoke_parts.append(f"{{\\kf{cs_per_word}}}{safe_word}")
+            
+            karaoke_text = " ".join(karaoke_parts)
+        else:
+            # Single word - no karaoke needed
+            karaoke_text = escape_ass_text(phrase)
         
-        # Slide up entrance + fade + subtle scale pop
-        effects = (
-            "{\\fad(250,350)}"  # Fade in/out
-            "{\\move(540,1760,540,1720,0,200)}"  # Slide up
-            "{\\t(0,150,\\fscx105\\fscy105)}"  # Slight scale pop
-            "{\\t(150,300,\\fscx100\\fscy100)}"  # Scale back
-        )
+        # Animation effects + karaoke base styling
+        # \\1c = primary color (text), \\3c = outline color
+        # Karaoke effect changes color as words are spoken
         
-        # For emphasis, add color flash
-        if style == "Emphasis":
+        if style == "Hook":
+            # Hook: Gold highlight sweep with slide up
+            effects = (
+                "{\\fad(250,350)}"  # Fade in/out
+                "{\\move(540,1760,540,1720,0,200)}"  # Slide up
+                "{\\K1}"  # Karaoke mode - words light up with primary color
+            )
+        elif style == "Emphasis":
+            # Emphasis: Brighter highlight with color flash
             effects = (
                 "{\\fad(200,300)}"
                 "{\\move(540,1760,540,1720,0,200)}"
-                "{\\t(0,100,\\c&H0080D0FF&\\fscx108)}"
-                "{\\t(100,250,\\c&H00E0E0FF&\\fscx100)}"
+                "{\\K1}"
             )
-        
-        # For ending, slower fade
-        if style == "Ending":
+        elif style == "Ending":
+            # Ending: Slower karaoke with elegant fade
             effects = (
                 "{\\fad(400,600)}"
                 "{\\move(540,1760,540,1720,0,300)}"
-                "{\\t(0,200,\\fscx102)}"
+                "{\\K1}"
+            )
+        else:
+            # Default style with karaoke
+            effects = (
+                "{\\fad(250,350)}"
+                "{\\move(540,1760,540,1720,0,200)}"
+                "{\\K1}"
             )
         
         events.append(
-            f"Dialogue: 0,{format_ass_time(start_time)},{format_ass_time(end_time)},{style},,0,0,0,,{effects}{safe_phrase}"
+            f"Dialogue: 0,{format_ass_time(start_time)},{format_ass_time(end_time)},{style},,0,0,0,,{effects}{karaoke_text}"
         )
     
     # Write the ASS file

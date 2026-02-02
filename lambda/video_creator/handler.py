@@ -98,21 +98,35 @@ def lambda_handler(event, context):
         logger.info(f"Voiceover generated (mood: {mood})")
         
         # Step 4: Generate period-appropriate background music
-        logger.info("🎵 Generating period background music...")
+        logger.info("🎵 Analyzing story for music selection...")
         from tts import get_audio_duration
+        from story_music_matcher import get_music_category_for_script
+        
         audio_duration = get_audio_duration(audio_path)
         
-        music_style = script.get('music_style', 'nostalgic_piano')
+        # Analyze script content to find best music category
+        music_category, confidence = get_music_category_for_script(script)
+        logger.info(f"🎵 Music category: {music_category} (confidence: {confidence:.0%})")
+        
         music_result = generate_historical_music(
             duration=audio_duration + 2,
-            music_style=music_style,
+            music_style=music_category,  # Use analyzed category
             mood=mood,
             era=script_era
         )
         music_path = music_result.get('path') if music_result else None
         
         if music_path:
-            logger.info(f"Background music generated ({music_style})")
+            logger.info(f"Background music generated ({music_category})")
+            # DEBUG: Upload music to S3 for inspection
+            try:
+                bucket = os.environ['S3_BUCKET_NAME']
+                timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+                music_s3_key = f"debug/music/{timestamp}_{music_category}.m4a"
+                s3.upload_file(music_path, bucket, music_s3_key)
+                logger.info(f"🎵 DEBUG: Music uploaded to s3://{bucket}/{music_s3_key}")
+            except Exception as e:
+                logger.warning(f"⚠️ DEBUG: Failed to upload music: {e}")
         else:
             logger.warning("Could not generate background music, proceeding without it")
         
@@ -168,7 +182,7 @@ Your new History Short is ready!
 📌 Title: {script['title']}
 📜 Topic: {script.get('original_topic', 'Random')}
 🕰️ Era: {script_era}
-🎵 Music: {music_style}
+🎵 Music: {music_category}
 
 📝 Script: {script['voiceover_text']}
 
