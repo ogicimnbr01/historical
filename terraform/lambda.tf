@@ -28,6 +28,13 @@ resource "aws_lambda_function" "video_generator" {
   }
 }
 
+# Disable async retries - only run once per invoke
+resource "aws_lambda_function_event_invoke_config" "no_retry" {
+  function_name                = aws_lambda_function.video_generator.function_name
+  maximum_retry_attempts       = 0
+  maximum_event_age_in_seconds = 60
+}
+
 # Lambda Layer for FFmpeg
 resource "aws_lambda_layer_version" "ffmpeg_layer" {
   layer_name          = "ffmpeg-layer"
