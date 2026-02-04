@@ -208,38 +208,45 @@ def compose_video(
     # FINAL AUDIO FIX - Using amix with weights (simplest approach)
     # Previous attempts with amerge/pan failed silently
     # ============================================================
+    # AUDIO MIXING - Fade-out at end for "video ended" feeling
+    # Music: -20% from previous levels (0.25→0.20, 0.30→0.24)
+    # Fade-out: last 0.7 seconds
+    # ============================================================
+    
+    fade_start = max(0, total_duration - 0.7)  # Fade starts 0.7s before end
     
     if music_index is not None and sfx_index is not None:
         # Voice + Music + SFX - all three
-        # Use amix with weights: voice=1.0, music=0.4, sfx=0.3
+        # Music weight: 0.20 (was 0.25, -20%)
         filter_parts.append(
             f"[{voice_index}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[voice];"
-            f"[{music_index}:a]aloop=loop=-1:size=2e+09,atrim=0:{total_duration},aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[music];"
-            f"[{sfx_index}:a]aloop=loop=-1:size=2e+09,atrim=0:{total_duration},aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[sfx];"
-            f"[voice][music][sfx]amix=inputs=3:duration=first:weights=1 0.25 0.3:normalize=0[aout]"
+            f"[{music_index}:a]aloop=loop=-1:size=2e+09,atrim=0:{total_duration},afade=t=out:st={fade_start}:d=0.7,aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[music];"
+            f"[{sfx_index}:a]aloop=loop=-1:size=2e+09,atrim=0:{total_duration},afade=t=out:st={fade_start}:d=0.7,aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[sfx];"
+            f"[voice][music][sfx]amix=inputs=3:duration=first:weights=1 0.20 0.25:normalize=0[aout]"
         )
         audio_map = '[aout]'
-        print(f"🔊 FINAL MIX: Voice + Music(0.25) + SFX(0.3) via amix+weights")
+        print(f"🔊 FINAL MIX: Voice + Music(0.20) + SFX(0.25) + fade-out@{fade_start:.1f}s")
         
     elif music_index is not None:
         # Voice + Music only
+        # Music weight: 0.24 (was 0.30, -20%)
         filter_parts.append(
             f"[{voice_index}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[voice];"
-            f"[{music_index}:a]aloop=loop=-1:size=2e+09,atrim=0:{total_duration},aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[music];"
-            f"[voice][music]amix=inputs=2:duration=first:weights=1 0.30:normalize=0[aout]"
+            f"[{music_index}:a]aloop=loop=-1:size=2e+09,atrim=0:{total_duration},afade=t=out:st={fade_start}:d=0.7,aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[music];"
+            f"[voice][music]amix=inputs=2:duration=first:weights=1 0.24:normalize=0[aout]"
         )
         audio_map = '[aout]'
-        print(f"🔊 FINAL MIX: Voice + Music(0.30) via amix+weights")
+        print(f"🔊 FINAL MIX: Voice + Music(0.24) + fade-out@{fade_start:.1f}s")
         
     elif sfx_index is not None:
         # Voice + SFX only
         filter_parts.append(
             f"[{voice_index}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[voice];"
-            f"[{sfx_index}:a]aloop=loop=-1:size=2e+09,atrim=0:{total_duration},aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[sfx];"
-            f"[voice][sfx]amix=inputs=2:duration=first:weights=1 0.35:normalize=0[aout]"
+            f"[{sfx_index}:a]aloop=loop=-1:size=2e+09,atrim=0:{total_duration},afade=t=out:st={fade_start}:d=0.7,aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[sfx];"
+            f"[voice][sfx]amix=inputs=2:duration=first:weights=1 0.28:normalize=0[aout]"
         )
         audio_map = '[aout]'
-        print(f"🔊 FINAL MIX: Voice + SFX(0.35) via amix+weights")
+        print(f"🔊 FINAL MIX: Voice + SFX(0.28) + fade-out@{fade_start:.1f}s")
         
     else:
         # No music, just use voiceover

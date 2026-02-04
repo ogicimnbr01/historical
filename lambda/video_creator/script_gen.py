@@ -82,29 +82,37 @@ Your videos reveal fascinating, lesser-known facts about history that make viewe
    ⚡ THE HOOK MUST HIT LIKE A PUNCH. ONE SENTENCE. BRUTAL.
    ⚡ Create "Wait, WHAT?!" reaction - not just "hmm interesting"
    ⚡ The viewer must feel CHALLENGED, ACCUSED, or SHOCKED
-   ⚡ MAX 6-7 WORDS. Shorter = Harder.
+   ⚡ IDEAL: 6-8 WORDS. Start with ACTION or PARADOX.
    
    🔥 BRUTALLY EFFECTIVE HOOK FORMULAS:
    
    ACCUSATION HOOKS (hardest hitting):
-   ✅ "Shakespeare lied to you." (4 words - PERFECT)
+   ✅ "Shakespeare lied to you." (4 words - needs shock verb)
    ✅ "Everything you know is wrong." (5 words)
    ✅ "The history books are lying." (5 words)
-   ✅ "You've been told a fairy tale." (6 words)
    
-   MYTH-BUSTING HOOKS:
-   ✅ "The most famous last words? Fake." (6 words)
-   ✅ "That iconic quote? Never happened." (5 words)
-   ✅ "The legend is a lie." (5 words)
+   ACTION OPENER HOOKS (start with specific action):
+   ✅ "He killed 10,000 men. Alone." (6 words)
+   ✅ "She poisoned three emperors before breakfast." (6 words)
+   ✅ "They killed with swords. Wrote with brushes." (7 words)
    
    PARADOX HOOKS:
    ✅ "The deadliest emperor died of cheese." (6 words)
    ✅ "He conquered the world. Died crying." (6 words)
-   ✅ "Savages? They bathed more than you." (6 words)
+   ✅ "The conqueror couldn't conquer his own mind." (7 words)
    
-   ❌ "History says Caesar's last words were..." (TOO SOFT - sounds like intro)
-   ❌ "They were sworn enemies in the bloodiest war..." (TOO LONG, documentary)
-   ❌ "Did you know..." (BORING - question = weak)
+   🚫 BANNED HOOK PATTERNS (NEVER USE):
+   ❌ "They were enemies..." / "They were sworn enemies..." (DOCUMENTARY INTRO - BANNED)
+   ❌ "In 1066..." / "In 1453..." / Any year-starting (BORING INTRO - BANNED)
+   ❌ "He was a king..." / "She was a queen..." (WEAK INTRO - BANNED)
+   ❌ "Did you know..." / "Have you ever..." (BEGGING - BANNED)
+   ❌ "There once was..." / "Once upon a time..." (FAIRY TALE - BANNED)
+
+⚠️ ABSOLUTE BAN ON MODERN REFERENCES:
+   ❌ NEVER mention: social media, internet, smartphone, TikTok, Instagram
+   ❌ NEVER compare to modern things for "relatability"
+   ❌ Keep the viewer IN the historical atmosphere
+   ❌ Instead of "more than you spend on social media" → "more than most spend training"
 
 2. CONTEXT (3-7s) - ESCALATE THE DANGER:
    ⚡ Don't just give context - RAISE THE STAKES
@@ -130,27 +138,60 @@ Your videos reveal fascinating, lesser-known facts about history that make viewe
    ⚡ This line should HAUNT the viewer. They should want to screenshot it.
    ⚡ MAX 5-6 WORDS. Shorter = More powerful. This is the KILL SHOT.
    
-   🏆 BRUTAL FINAL PUNCH FORMULAS:
+   ⚠️ ROTATE BETWEEN THESE ENDING FAMILIES (don't repeat same type):
    
-   DARK WISDOM (best for betrayal/death stories):
-   ✅ "The deepest wounds don't bleed." (5 words - PERFECT)
+   🏆 DARK WISDOM (betrayal/death stories):
+   ✅ "The deepest wounds don't bleed." (5 words)
    ✅ "Betrayal hurts more than steel." (5 words)
-   ✅ "Some knives never leave a scar." (6 words)
-   ✅ "Not all pain leaves marks." (5 words)
    
-   COLD TRUTHS (best for myth-busting):
+   🏆 COLD TRUTHS (myth-busting):
    ✅ "Legends lie. History doesn't care." (5 words)
    ✅ "The truth is always darker." (5 words)
-   ✅ "Reality is never that clean." (5 words)
    
-   POWER STATEMENTS (best for empire/war stories):
+   🏆 POWER STATEMENTS (empire/war):
    ✅ "Empires die. Mercy survives." (4 words)
    ✅ "Victory fades. Respect echoes." (4 words)
-   ✅ "Crowns rust. Fear doesn't." (4 words)
    
-   ❌ "Some betrayals cut deeper than daggers." (TOO COMMON - overused phrase)
-   ❌ "And that's the story of this sultan." (weak, no resonance)
-   ❌ "Interesting, right?" (begging for engagement)
+   🏆 IRONIC REVERSAL (unexpected twist):
+   ✅ "The conqueror died crying." (4 words)
+   ✅ "The hero was the villain." (5 words)
+   ✅ "The winner lost everything." (4 words)
+   
+   🏆 HISTORICAL ECHO (connects past to present):
+   ✅ "We still do the same thing." (6 words)
+   ✅ "Nothing has changed since." (4 words)
+   ✅ "History keeps repeating this lesson." (5 words)
+   
+   🏆 ONE-WORD PUNCH (single word impact):
+   ✅ "Power." (1 word)
+   ✅ "Mercy. Fear. Respect." (3 words)
+   ✅ "Legacy." (1 word)
+   
+   🏆 CONTRAST PUNCH (two opposites):
+   ✅ "The blade was duty. The poem was soul." (8 words)
+   ✅ "Empires crumble. Stories survive." (4 words)
+   
+   ❌ "Some betrayals cut deeper than daggers." (TOO COMMON - BANNED)
+   ❌ "And that's the story of..." (weak - BANNED)
+   ❌ "Interesting, right?" (begging - BANNED)
+
+⚠️ HOOK VARIETY - DON'T ALWAYS USE "LIED TO YOU":
+   
+   ACCUSATION (25% of videos):
+   ✅ "Shakespeare lied to you."
+   ✅ "Hollywood sold you a lie."
+   
+   ACTION OPENER (25% of videos):
+   ✅ "This man killed 10,000 soldiers. Alone."
+   ✅ "She poisoned three emperors."
+   
+   PARADOX (25% of videos):
+   ✅ "The deadliest emperor died of cheese."
+   ✅ "The richest man died poor."
+   
+   REVELATION (25% of videos):
+   ✅ "No one talks about what happened next."
+   ✅ "The ending was never told."
 
 🎨 VISUAL PROMPTS:
 For each segment, generate an image_prompt that describes what should be shown.
@@ -373,18 +414,30 @@ def validate_and_fix_script(script: dict, topic_info: dict) -> dict:
     """
     
     # ===== WEAK HOOK PATTERNS (BLACKLIST) =====
+    # These patterns are BANNED - documentary/weak intros
     WEAK_PATTERNS = [
+        # Begging patterns
         r"^did you know",
-        r"^today we",
-        r"^let me tell you",
-        r"^in this video",
         r"^have you ever wondered",
         r"^what if i told you",
         r"^imagine if",
+        # Documentary intros (BANNED)
+        r"^they were enemies",
+        r"^they were sworn enemies",
+        r"^he was a king",
+        r"^she was a queen",
+        r"^he was an emperor",
+        r"^in \d{3,4}",  # Matches "In 1453", "In 1066", etc.
+        # Weak intros
+        r"^today we",
+        r"^let me tell you",
+        r"^in this video",
         r"^here's a fun fact",
         r"^fun fact:",
         r"^everyone knows",
         r"^you probably know",
+        r"^there once was",
+        r"^once upon a time",
     ]
     
     # ===== STRONG HOOK PATTERNS (WHITELIST) =====
@@ -423,11 +476,24 @@ def validate_and_fix_script(script: dict, topic_info: dict) -> dict:
                 hook_score += 2
                 break  # Only count once
         
-        # Check hook word count
+        # Check hook word count - STRICTER RULES
+        # Minimum: 6 words
+        # Ideal: 6-9 words (golden zone)
+        # 4-5 words: ONLY allowed with shock verbs (lied, killed, fake, etc.)
         hook_words = len(hook_text.split())
-        if hook_words <= 9:
-            print(f"✅ HOOK GOLDEN ZONE: {hook_words} words (ideal 8-9)")
+        
+        SHOCK_VERBS = ["lied", "killed", "died", "fake", "wrong", "lie", "never", "didn't", "wasn't", "weren't", "sold", "myth", "savages", "monster", "destroyed", "betrayed"]
+        has_shock_verb = any(verb in hook_text for verb in SHOCK_VERBS)
+        
+        if hook_words >= 6 and hook_words <= 9:
+            print(f"✅ HOOK GOLDEN ZONE: {hook_words} words (ideal 6-9)")
             hook_score += 1
+        elif hook_words >= 4 and hook_words <= 5 and has_shock_verb:
+            print(f"⚡ HOOK SHORT BUT PUNCHY: {hook_words} words (shock verb detected)")
+            hook_score += 1  # Still good if shock verb present
+        elif hook_words >= 4 and hook_words <= 5:
+            print(f"⚠️ HOOK TOO SHORT: {hook_words} words (min 6, or needs shock verb)")
+            hook_score -= 1  # Penalize short hooks without shock verb
         elif hook_words <= 12:
             print(f"✅ HOOK OK: {hook_words} words")
         else:
