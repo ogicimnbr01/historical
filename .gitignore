@@ -64,3 +64,8 @@ desktop.ini
 response.json
 response_new.json
 **/response*.json
+
+# YouTube OAuth credentials (NEVER COMMIT)
+client_secret*.json
+youtube_secret.json
+get_youtube_token.py

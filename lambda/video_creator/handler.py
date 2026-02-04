@@ -12,11 +12,19 @@ import logging
 from datetime import datetime
 
 from script_gen import generate_history_script
+from script_pipeline import generate_script_with_fallback
 from stock_fetcher import fetch_videos_by_segments
 from tts import generate_voiceover
 from video_composer import compose_video
 from music_fetcher import generate_historical_music
 from copyright_safety import reset_copyright_tracker, get_copyright_tracker
+
+# YouTube Analytics integration (optional - for correlation tracking)
+try:
+    from youtube_analytics import save_video_with_predictions
+    ANALYTICS_AVAILABLE = True
+except ImportError:
+    ANALYTICS_AVAILABLE = False
 
 # Setup logging
 logger = logging.getLogger()
@@ -34,6 +42,7 @@ def lambda_handler(event, context):
     Event can contain:
     - topic: Specific topic to generate (e.g., "Atatürk's favorite foods")
     - era: Historical era (ancient, medieval, ottoman, early_20th, etc.)
+    - use_pipeline: Use new iterative pipeline (default: True)
     
     If no topic provided, random topic is selected from built-in list
     """
@@ -46,9 +55,10 @@ def lambda_handler(event, context):
     try:
         region = os.environ.get('AWS_REGION_NAME', 'us-east-1')
         
-        # Get topic from event (optional)
+        # Get parameters from event
         topic = event.get('topic') if event else None
         era = event.get('era') if event else None
+        use_pipeline = event.get('use_pipeline', True) if event else True  # Default: use new pipeline
         
         if topic:
             logger.info(f"📜 Generating script for topic: {topic}")
@@ -56,7 +66,9 @@ def lambda_handler(event, context):
             logger.info("📜 Generating script with random historical topic...")
         
         # Step 1: Generate history script using Bedrock Claude
-        script = generate_history_script(topic=topic, era=era, region_name=region)
+        # Uses new pipeline with scoring/refinement, or falls back to old system
+        logger.info(f"🔧 Pipeline mode: {'NEW (v2.0)' if use_pipeline else 'LEGACY (v1.0)'}")
+        script = generate_script_with_fallback(topic=topic, era=era, region_name=region, use_pipeline=use_pipeline)
         logger.info(f"Script generated: {script['title']}")
         logger.info(f"Era: {script.get('era', 'unknown')}, Mood: {script.get('mood', 'documentary')}")
         
@@ -166,6 +178,57 @@ def lambda_handler(event, context):
             Params={'Bucket': bucket, 'Key': s3_key},
             ExpiresIn=604800  # 7 days
         )
+        
+        # Step 6.5: Save video metrics for YouTube correlation tracking (optional)
+        if ANALYTICS_AVAILABLE:
+            try:
+                # Extract pipeline predictions
+                pipeline_scores = script.get('pipeline_scores', {})
+                hook_kpi = pipeline_scores.get('hook_kpi', {})
+                
+                # Get mode from environment or default
+                pipeline_mode = os.environ.get('PIPELINE_MODE', 'quality')
+                
+                # Extract all calibration fields
+                predicted_retention = hook_kpi.get('predicted_retention', 50)
+                hook_score = pipeline_scores.get('hook_score', 0)
+                instant_clarity = hook_kpi.get('instant_clarity', 5)
+                curiosity_gap = hook_kpi.get('curiosity_gap', 5)
+                swipe_risk = hook_kpi.get('swipe_risk', 5)
+                visual_relevance = pipeline_scores.get('visual_relevance', 5)
+                
+                # Content tags
+                era = script.get('era', 'unknown')
+                topic_entity = script.get('topic_entity', script.get('original_topic', 'unknown'))
+                
+                # Title variant (default to safe, can be overridden by caller)
+                title_variant_type = script.get('title_variant_type', 'safe')
+                title_used = script.get('title', '')
+                
+                # Use timestamp-based ID (will be updated with YouTube ID after upload)
+                internal_video_id = f"pending_{timestamp}"
+                publish_time = datetime.now().isoformat()
+                
+                save_video_with_predictions(
+                    video_id=internal_video_id,
+                    publish_time_utc=publish_time,
+                    pipeline_version="2.3",
+                    mode=pipeline_mode,
+                    hook_score=hook_score,
+                    predicted_retention=predicted_retention,
+                    instant_clarity=instant_clarity,
+                    curiosity_gap=curiosity_gap,
+                    swipe_risk=swipe_risk,
+                    visual_relevance=visual_relevance,
+                    era=era,
+                    topic_entity=topic_entity[:100] if topic_entity else "unknown",
+                    title_variant_type=title_variant_type,
+                    title_used=title_used[:200] if title_used else "",
+                    region_name=region
+                )
+                logger.info(f"[CALIBRATION] Saved: mode={pipeline_mode}, predicted={predicted_retention}%, era={era}")
+            except Exception as e:
+                logger.warning(f"[WARNING] Failed to save video metrics: {e}")
         
         # Step 7: Send notification via SNS
         logger.info("📧 Sending notification...")

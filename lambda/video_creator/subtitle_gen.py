@@ -25,10 +25,10 @@ PlayResY: 1920
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial Black,52,&H00E0E0FF,&H000000FF,&H00202040,&H80000000,1,0,0,0,100,100,1,0,1,3,2,2,40,40,200,1
-Style: Hook,Arial Black,58,&H0088CCFF,&H000000FF,&H00203060,&H80000000,1,0,0,0,100,100,1,0,1,4,3,2,40,40,200,1
-Style: Emphasis,Arial Black,56,&H0080D0FF,&H000000FF,&H00304050,&H80000000,1,0,0,0,105,100,2,0,1,4,2,2,40,40,200,1
-Style: Ending,Arial Black,54,&H00C0A080,&H000000FF,&H00403020,&H80000000,1,1,0,0,100,100,1,0,1,3,2,2,40,40,200,1
+Style: Default,Arial Black,52,&H00E0E0FF,&H000000FF,&H00202040,&H80000000,1,0,0,0,100,100,1,0,1,3,2,2,40,40,350,1
+Style: Hook,Arial Black,58,&H0088CCFF,&H000000FF,&H00203060,&H80000000,1,0,0,0,100,100,1,0,1,4,3,2,40,40,350,1
+Style: Emphasis,Arial Black,56,&H0080D0FF,&H000000FF,&H00304050,&H80000000,1,0,0,0,105,100,2,0,1,4,2,2,40,40,350,1
+Style: Ending,Arial Black,54,&H00C0A080,&H000000FF,&H00403020,&H80000000,1,1,0,0,100,100,1,0,1,3,2,2,40,40,350,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -161,28 +161,28 @@ def create_subtitle_file(
             # Hook: Gold highlight sweep with slide up
             effects = (
                 "{\\fad(250,350)}"  # Fade in/out
-                "{\\move(540,1760,540,1720,0,200)}"  # Slide up
+                "{\\move(540,1560,540,1520,0,200)}"  # Slide up (moved higher)
                 "{\\K1}"  # Karaoke mode - words light up with primary color
             )
         elif style == "Emphasis":
             # Emphasis: Brighter highlight with color flash
             effects = (
                 "{\\fad(200,300)}"
-                "{\\move(540,1760,540,1720,0,200)}"
+                "{\\move(540,1560,540,1520,0,200)}"
                 "{\\K1}"
             )
         elif style == "Ending":
             # Ending: Slower karaoke with elegant fade
             effects = (
                 "{\\fad(400,600)}"
-                "{\\move(540,1760,540,1720,0,300)}"
+                "{\\move(540,1560,540,1520,0,300)}"
                 "{\\K1}"
             )
         else:
             # Default style with karaoke
             effects = (
                 "{\\fad(250,350)}"
-                "{\\move(540,1760,540,1720,0,200)}"
+                "{\\move(540,1560,540,1520,0,200)}"
                 "{\\K1}"
             )
         
