@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calibration Admin Panel</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div id="app">
+        <header class="header">
+            <h1>📊 Calibration Admin</h1>
+            <div class="api-key-container">
+                <input type="password" id="apiKeyInput" placeholder="API Key" />
+                <button onclick="setApiKey()">Set</button>
+            </div>
+        </header>
+
+        <nav class="nav">
+            <button class="nav-btn active" onclick="showDashboard()">Dashboard</button>
+            <button class="nav-btn" onclick="showVideoList()">Videos</button>
+        </nav>
+
+        <main id="content">
+            <!-- Dashboard Section -->
+            <section id="dashboard" class="section">
+                <h2>Dashboard</h2>
+                <div class="stats-grid" id="statsGrid">
+                    <div class="stat-card">
+                        <span class="stat-value" id="statTotal">-</span>
+                        <span class="stat-label">Total Videos</span>
+                    </div>
+                    <div class="stat-card eligible">
+                        <span class="stat-value" id="statEligible">-</span>
+                        <span class="stat-label">Eligible</span>
+                    </div>
+                    <div class="stat-card pending">
+                        <span class="stat-value" id="statPending">-</span>
+                        <span class="stat-label">Pending</span>
+                    </div>
+                    <div class="stat-card complete">
+                        <span class="stat-value" id="statComplete">-</span>
+                        <span class="stat-label">Complete</span>
+                    </div>
+                    <div class="stat-card failed">
+                        <span class="stat-value" id="statFailed">-</span>
+                        <span class="stat-label">Failed</span>
+                    </div>
+                    <div class="stat-card test">
+                        <span class="stat-value" id="statTest">-</span>
+                        <span class="stat-label">Test</span>
+                    </div>
+                </div>
+
+                <div class="metrics-row">
+                    <div class="metric-card">
+                        <span class="metric-value" id="metricMAE">-</span>
+                        <span class="metric-label">MAE (Retention %)</span>
+                    </div>
+                    <div class="metric-card">
+                        <span class="metric-value" id="metricCorr">-</span>
+                        <span class="metric-label">Correlation</span>
+                    </div>
+                    <div class="metric-card">
+                        <span class="metric-value" id="metricSample">-</span>
+                        <span class="metric-label">Sample Size</span>
+                    </div>
+                    <div class="metric-card">
+                        <span class="metric-value" id="metricEligibleRate">-</span>
+                        <span class="metric-label">Eligible Rate</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Video List Section -->
+            <section id="videoList" class="section hidden">
+                <h2>Videos</h2>
+
+                <div class="filters">
+                    <select id="filterStatus" onchange="loadVideos()">
+                        <option value="">All Status</option>
+                        <option value="pending">Pending</option>
+                        <option value="linked">Linked</option>
+                        <option value="complete">Complete</option>
+                        <option value="failed">Failed</option>
+                        <option value="test">Test</option>
+                    </select>
+                    <select id="filterEligible" onchange="loadVideos()">
+                        <option value="">All Eligible</option>
+                        <option value="true">Eligible Only</option>
+                        <option value="false">Ineligible Only</option>
+                    </select>
+                    <select id="filterMode" onchange="loadVideos()">
+                        <option value="">All Modes</option>
+                        <option value="fast">Fast</option>
+                        <option value="quality">Quality</option>
+                    </select>
+                    <select id="filterFallback" onchange="loadVideos()">
+                        <option value="">All Pipeline</option>
+                        <option value="true">Fallback Only</option>
+                        <option value="false">v2.3 Only</option>
+                    </select>
+                    <button class="refresh-btn" onclick="loadVideos()">🔄 Refresh</button>
+                </div>
+
+                <div class="bulk-actions">
+                    <button onclick="markSelectedAsTest()" class="bulk-btn">Mark Selected as TEST</button>
+                    <span id="selectedCount">0 selected</span>
+                </div>
+
+                <table class="videos-table">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
+                            <th>Video ID</th>
+                            <th>Title</th>
+                            <th>Date</th>
+                            <th>Mode</th>
+                            <th>Predicted</th>
+                            <th>Actual</th>
+                            <th>Pipeline</th>
+                            <th>Eligible</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="videosTableBody">
+                    </tbody>
+                </table>
+            </section>
+
+            <!-- Video Detail Modal -->
+            <div id="videoModal" class="modal hidden">
+                <div class="modal-content">
+                    <span class="close" onclick="closeModal()">&times;</span>
+                    <h2 id="modalTitle">Video Details</h2>
+                    <div id="modalBody"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>

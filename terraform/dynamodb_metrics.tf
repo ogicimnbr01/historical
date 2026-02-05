@@ -9,16 +9,35 @@ resource "aws_dynamodb_table" "video_metrics" {
     type = "S"
   }
 
-  # Global secondary index for querying by upload date
+  attribute {
+    name = "upload_date"
+    type = "S"
+  }
+
+  attribute {
+    name = "gsi1pk"
+    type = "S"
+  }
+
+  attribute {
+    name = "publish_time_utc"
+    type = "S"
+  }
+
+  # Legacy index for upload_date queries
   global_secondary_index {
     name            = "upload_date_index"
     hash_key        = "upload_date"
     projection_type = "ALL"
   }
 
-  attribute {
-    name = "upload_date"
-    type = "S"
+  # GSI for admin panel: gsi1pk=VIDEOS, sorted by publish_time_utc
+  # Enables efficient date-range queries without full table scan
+  global_secondary_index {
+    name            = "gsi1_publish_time"
+    hash_key        = "gsi1pk"
+    range_key       = "publish_time_utc"
+    projection_type = "ALL"
   }
 
   tags = {

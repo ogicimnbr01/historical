@@ -71,13 +71,14 @@ FAST_MODE_CONFIG = {
     "max_api_calls": 12
 }
 
-# QUALITY mode: current defaults (stricter)
+# QUALITY mode: stricter thresholds but optimized iterations
+# Reduced iterations to prevent API call waste on hard topics
 QUALITY_MODE_CONFIG = {
     "hook_threshold": 9.0,
     "section_threshold": 8.5,
     "final_threshold": 8.5,
-    "hook_max_iterations": 5,
-    "section_max_iterations": 3,
+    "hook_max_iterations": 3,    # Reduced from 5 - reroll topic if stuck
+    "section_max_iterations": 2,  # Reduced from 3
     "max_api_calls": 18
 }
 
@@ -611,10 +612,26 @@ def parse_json_safe(text: str, client=None, original_prompt: str = None) -> dict
     """
     global _metrics
     
-    # Try direct parse first
+    def strip_markdown_fences(s: str) -> str:
+        """Remove markdown code fences from text."""
+        s = s.strip()
+        # Remove opening fence
+        if s.startswith("```json"):
+            s = s[7:]
+        elif s.startswith("```"):
+            s = s[3:]
+        # Remove closing fence
+        if s.endswith("```"):
+            s = s[:-3]
+        return s.strip()
+    
+    # CRITICAL: Strip markdown code fences FIRST (most common parse failure)
+    clean_text = strip_markdown_fences(text)
+    
+    # Try direct parse first (with cleaned text)
     try:
         # Find JSON in response
-        json_match = re.search(r'\{[\s\S]*\}', text)
+        json_match = re.search(r'\{[\s\S]*\}', clean_text)
         if json_match:
             return json.loads(json_match.group())
     except json.JSONDecodeError:
@@ -622,7 +639,7 @@ def parse_json_safe(text: str, client=None, original_prompt: str = None) -> dict
     
     # Try to extract JSON array
     try:
-        json_match = re.search(r'\[[\s\S]*\]', text)
+        json_match = re.search(r'\[[\s\S]*\]', clean_text)
         if json_match:
             return {"array": json.loads(json_match.group())}
     except json.JSONDecodeError:
@@ -635,10 +652,12 @@ def parse_json_safe(text: str, client=None, original_prompt: str = None) -> dict
             print(f"🔧 Attempting JSON repair (repair #{_metrics['repair_count']})...")
             
             repair_prompt = f"""The following text should be valid JSON but has errors. 
-Fix it and return ONLY the corrected JSON, nothing else:
+Fix it and return ONLY the corrected JSON, nothing else. Do NOT wrap in markdown code fences:
 
 {text}"""
             repaired = invoke_bedrock(client, repair_prompt, temperature=0.0, max_tokens=300)
+            # CRITICAL: Also strip markdown from repair output
+            repaired = strip_markdown_fences(repaired)
             json_match = re.search(r'\{[\s\S]*\}', repaired)
             if json_match:
                 result = json.loads(json_match.group())
@@ -648,7 +667,7 @@ Fix it and return ONLY the corrected JSON, nothing else:
             print(f"⚠️ JSON repair failed: {e}")
             _metrics["warnings"].append("JSON_REPAIR_FAILED")
     
-    print(f"⚠️ JSON parse failed: {text[:100]}...")
+    print(f"⚠️ JSON parse failed (first 50 chars): {text[:50]}...")
     _metrics["warnings"].append("JSON_PARSE_FAILED")
     return None
 

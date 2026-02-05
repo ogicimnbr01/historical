@@ -74,6 +74,28 @@ resource "aws_iam_role_policy" "lambda_policy" {
           "arn:aws:bedrock:*::foundation-model/amazon.titan-image-generator-*",
           "arn:aws:bedrock:*:*:inference-profile/us.anthropic.*"
         ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:PutItem",
+          "dynamodb:GetItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:Query",
+          "dynamodb:Scan"
+        ]
+        Resource = [
+          aws_dynamodb_table.video_metrics.arn,
+          "${aws_dynamodb_table.video_metrics.arn}/index/*"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue"
+        ]
+        Resource = "arn:aws:secretsmanager:${var.aws_region}:*:secret:shorts/youtube-oauth*"
       }
     ]
   })

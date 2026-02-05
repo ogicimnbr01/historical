@@ -238,6 +238,13 @@ SENSITIVE_TERMS = {
     "explosion": "dramatic clouds",
     "fire": "warm lighting",
     "burning": "torch-lit scene",
+    # Blade weapons - often blocked by Titan (especially with Asian themes)
+    "katana": "ceremonial ornament",
+    "sword": "polished steel artifact",
+    "blade": "metalwork display",
+    "dagger": "ornate metalwork",
+    "swords": "museum relics",
+    "scimitar": "curved decorative piece",
 }
 
 

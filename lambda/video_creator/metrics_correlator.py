@@ -14,7 +14,11 @@ METRICS_TABLE_NAME = os.environ.get("METRICS_TABLE_NAME", "shorts_video_metrics"
 
 
 def get_completed_videos(days_back: int = 30, region_name: str = None) -> List[Dict]:
-    """Get videos with both predicted and actual metrics."""
+    """Get videos with both predicted and actual metrics.
+    
+    IMPORTANT: Only returns calibration_eligible=True videos.
+    Fallback runs are excluded to prevent data pollution.
+    """
     region = region_name or os.environ.get("AWS_REGION_NAME", "us-east-1")
     dynamodb = boto3.resource("dynamodb", region_name=region)
     table = dynamodb.Table(METRICS_TABLE_NAME)
@@ -27,10 +31,24 @@ def get_completed_videos(days_back: int = 30, region_name: str = None) -> List[D
         )
         
         cutoff = (datetime.now() - timedelta(days=days_back)).isoformat()
-        items = [
-            item for item in response.get("Items", [])
-            if item.get("publish_time_utc", item.get("upload_date", "")) >= cutoff
-        ]
+        items = []
+        excluded_count = 0
+        
+        for item in response.get("Items", []):
+            # Date filter
+            if item.get("publish_time_utc", item.get("upload_date", "")) < cutoff:
+                continue
+            
+            # CRITICAL: Skip fallback runs (calibration_eligible=False)
+            # These have mismatched predictions vs published content
+            if item.get("calibration_eligible") is False:
+                excluded_count += 1
+                continue
+                
+            items.append(item)
+        
+        if excluded_count > 0:
+            print(f"[INFO] Excluded {excluded_count} ineligible videos (fallback runs)")
         
         return items
     except Exception as e:

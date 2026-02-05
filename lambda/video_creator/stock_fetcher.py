@@ -490,7 +490,7 @@ def generate_historical_video(prompt: str, segment_index: int = 0) -> Optional[s
                 f"crop=1080:1920,"
                 
                 # Step 2: Ken Burns zoom with subtle pan
-                f"zoompan=z='if(lte(zoom,1.0),1.001,min(zoom+0.0008,1.15))':x='iw/2-(iw/zoom/2)+sin(on/80)*20':y='ih/2-(ih/zoom/2)':d=150:s=1080x1920:fps=30,"
+                f"zoompan=z='if(lte(zoom,1.0),1.001,min(zoom+0.0005,1.15))':x='iw/2-(iw/zoom/2)+sin(on/100)*20':y='ih/2-(ih/zoom/2)':d=240:s=1080x1920:fps=30,"
                 
                 # Step 3: Fade in for reveal effect
                 f"fade=in:0:24,"  # 0.8s fade
@@ -505,7 +505,7 @@ def generate_historical_video(prompt: str, segment_index: int = 0) -> Optional[s
             '-c:v', 'libx264',
             '-preset', 'fast',
             '-pix_fmt', 'yuv420p',
-            '-t', '5',  # 5 second clip
+            '-t', '8',  # 8 second clip (supports voiceovers up to 32s with 4 clips)
             video_path
         ]
         
@@ -575,7 +575,7 @@ def create_gradient_fallback(index: int = 0, era: str = None) -> Optional[str]:
             get_ffmpeg_path(),
             '-y',
             '-f', 'lavfi',
-            '-i', f"gradients=s=1080x1920:c0={color1}:c1={color2}:x0=540:y0=0:x1=540:y1=1920:d=5:r=30",
+            '-i', f"gradients=s=1080x1920:c0={color1}:c1={color2}:x0=540:y0=0:x1=540:y1=1920:d=8:r=30",
             '-vf', (
                 # Add subtle animation via zoompan
                 "zoompan=z='1+0.02*sin(on/25)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30,"
@@ -587,7 +587,7 @@ def create_gradient_fallback(index: int = 0, era: str = None) -> Optional[str]:
             '-c:v', 'libx264',
             '-preset', 'fast',
             '-pix_fmt', 'yuv420p',
-            '-t', '5',
+            '-t', '8',
             temp_path
         ]
         
@@ -647,12 +647,12 @@ def create_simple_color_fallback(index: int = 0, color: str = None) -> Optional[
             get_ffmpeg_path(),
             '-y',
             '-f', 'lavfi',
-            '-i', f"color=c={use_color}:s=1080x1920:d=5:r=30",
+            '-i', f"color=c={use_color}:s=1080x1920:d=8:r=30",
             '-vf', 'vignette=PI/5',  # Simple vignette
             '-c:v', 'libx264',
             '-preset', 'ultrafast',
             '-pix_fmt', 'yuv420p',
-            '-t', '5',
+            '-t', '8',
             temp_path
         ]
         

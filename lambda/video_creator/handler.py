@@ -189,6 +189,11 @@ def lambda_handler(event, context):
                 # Get mode from environment or default
                 pipeline_mode = os.environ.get('PIPELINE_MODE', 'quality')
                 
+                # CRITICAL: Check if fallback was used (pollutes calibration data)
+                fallback_used = script.get('fallback_used', False)
+                pipeline_executed = "fallback" if fallback_used else "v2.3"
+                calibration_eligible = not fallback_used
+                
                 # Extract all calibration fields
                 predicted_retention = hook_kpi.get('predicted_retention', 50)
                 hook_score = pipeline_scores.get('hook_score', 0)
@@ -213,6 +218,7 @@ def lambda_handler(event, context):
                     video_id=internal_video_id,
                     publish_time_utc=publish_time,
                     pipeline_version="2.3",
+                    pipeline_executed=pipeline_executed,
                     mode=pipeline_mode,
                     hook_score=hook_score,
                     predicted_retention=predicted_retention,
@@ -224,9 +230,10 @@ def lambda_handler(event, context):
                     topic_entity=topic_entity[:100] if topic_entity else "unknown",
                     title_variant_type=title_variant_type,
                     title_used=title_used[:200] if title_used else "",
+                    calibration_eligible=calibration_eligible,
                     region_name=region
                 )
-                logger.info(f"[CALIBRATION] Saved: mode={pipeline_mode}, predicted={predicted_retention}%, era={era}")
+                logger.info(f"[CALIBRATION] Saved: {pipeline_executed} | eligible={calibration_eligible} | predicted={predicted_retention}%")
             except Exception as e:
                 logger.warning(f"[WARNING] Failed to save video metrics: {e}")
         

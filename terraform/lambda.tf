@@ -4,7 +4,7 @@ resource "aws_lambda_function" "video_generator" {
   role          = aws_iam_role.lambda_role.arn
   handler       = "handler.lambda_handler"
   runtime       = "python3.11"
-  timeout       = 300  # 5 minutes
+  timeout       = 900  # 15 minutes for video processing
   memory_size   = 3008 # 3GB for video processing
 
   filename         = data.archive_file.lambda_zip.output_path
@@ -17,9 +17,9 @@ resource "aws_lambda_function" "video_generator" {
 
   environment {
     variables = {
-      S3_BUCKET_NAME     = aws_s3_bucket.videos.id
-      SNS_TOPIC_ARN      = aws_sns_topic.video_ready.arn
-      AWS_REGION_NAME    = var.aws_region
+      S3_BUCKET_NAME  = aws_s3_bucket.videos.id
+      SNS_TOPIC_ARN   = aws_sns_topic.video_ready.arn
+      AWS_REGION_NAME = var.aws_region
     }
   }
 
@@ -40,10 +40,10 @@ resource "aws_lambda_layer_version" "ffmpeg_layer" {
   layer_name          = "ffmpeg-layer"
   description         = "FFmpeg binary for video processing"
   compatible_runtimes = ["python3.11"]
-  
+
   s3_bucket = aws_s3_bucket.videos.id
   s3_key    = "layers/ffmpeg-layer.zip"
-  
+
   depends_on = [aws_s3_object.ffmpeg_layer]
 }
 
@@ -59,10 +59,10 @@ resource "aws_lambda_layer_version" "python_deps" {
   layer_name          = "python-deps-layer"
   description         = "Python dependencies: requests"
   compatible_runtimes = ["python3.11"]
-  
+
   s3_bucket = aws_s3_bucket.videos.id
   s3_key    = "layers/python-deps.zip"
-  
+
   depends_on = [aws_s3_object.python_deps]
 }
 

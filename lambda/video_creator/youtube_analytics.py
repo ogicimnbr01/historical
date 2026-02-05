@@ -179,6 +179,7 @@ def save_video_with_predictions(
     publish_time_utc: str,
     # Pipeline metadata
     pipeline_version: str = "2.3",
+    pipeline_executed: str = "v2.3",  # "v2.3" or "fallback"
     mode: str = "quality",  # "fast" or "quality"
     # Predictions
     hook_score: float = 0.0,
@@ -195,19 +196,22 @@ def save_video_with_predictions(
     # Distribution
     title_variant_type: str = "safe",  # "safe", "bold", "experimental"
     title_used: str = "",
+    # Calibration eligibility
+    calibration_eligible: bool = True,  # False if fallback used
     # AWS
     region_name: str = None
 ) -> bool:
     """
     Save video with full pipeline predictions for calibration analysis.
     
-    This creates the baseline record. After 24-72 hours, analytics fetcher
-    will update with actual_retention from YouTube.
+    CRITICAL: Only videos with calibration_eligible=True should be used
+    in correlation analysis. Fallback runs have mismatched predictions.
     
     CALIBRATION FIELDS:
     - Predictions: predicted_retention, hook_score, instant_clarity, curiosity_gap, swipe_risk
     - Content: era, topic_entity, visual_relevance
     - Distribution: mode, title_variant_type
+    - Integrity: pipeline_executed, calibration_eligible
     - Results (filled later): actual_retention, analytics_fetched_at_utc
     """
     region = region_name or os.environ.get("AWS_REGION_NAME", "us-east-1")
@@ -218,10 +222,12 @@ def save_video_with_predictions(
         item = {
             # Identity
             "video_id": video_id,
+            "gsi1pk": "VIDEOS",  # Fixed partition key for GSI queries
             "publish_time_utc": publish_time_utc,
             
             # Pipeline metadata
             "pipeline_version": pipeline_version,
+            "pipeline_executed": pipeline_executed,
             "mode": mode,
             
             # Predictions (stored as strings for DynamoDB compatibility)
@@ -244,6 +250,9 @@ def save_video_with_predictions(
             "title_variant_type": title_variant_type,
             "title_used": title_used,
             
+            # Calibration integrity
+            "calibration_eligible": calibration_eligible,
+            
             # Results (filled by analytics fetcher)
             "actual_retention": None,
             "analytics_fetched_at_utc": None,
@@ -254,7 +263,8 @@ def save_video_with_predictions(
         }
         
         table.put_item(Item=item)
-        print(f"[OK] Saved video {video_id} | mode={mode} | predicted={predicted_retention}% | era={era}")
+        eligible_str = "ELIGIBLE" if calibration_eligible else "INELIGIBLE (fallback)"
+        print(f"[OK] Saved video {video_id} | {pipeline_executed} | {eligible_str} | predicted={predicted_retention}%")
         return True
         
     except Exception as e:
@@ -273,7 +283,7 @@ def update_with_actual_metrics(video_id: str, metrics: Dict, region_name: str = 
     try:
         table.update_item(
             Key={"video_id": video_id},
-            UpdateExpression="SET actual_retention = :ar, views = :v, avg_duration_s = :ad, fetch_date = :fd, #st = :s",
+            UpdateExpression="SET actual_retention = :ar, views = :v, avg_duration_s = :ad, analytics_fetched_at_utc = :fd, #st = :s",
             ExpressionAttributeNames={"#st": "status"},
             ExpressionAttributeValues={
                 ":ar": str(metrics.get("avg_view_percentage", 0)),
@@ -290,9 +300,14 @@ def update_with_actual_metrics(video_id: str, metrics: Dict, region_name: str = 
         return False
 
 
-def get_pending_videos(region_name: str = None) -> List[Dict]:
+def get_linked_videos(region_name: str = None) -> List[Dict]:
     """
-    Get videos that need analytics fetching (status = pending).
+    Get videos ready for analytics fetching.
+    
+    Selection criteria:
+    - status = "linked" (has youtube_video_id set)
+    - calibration_eligible = true
+    - youtube_video_id exists
     """
     region = region_name or os.environ.get("AWS_REGION_NAME", "us-east-1")
     dynamodb = boto3.resource("dynamodb", region_name=region)
@@ -300,14 +315,25 @@ def get_pending_videos(region_name: str = None) -> List[Dict]:
     
     try:
         response = table.scan(
-            FilterExpression="#st = :s",
+            FilterExpression="#st = :s AND calibration_eligible = :e AND attribute_exists(youtube_video_id)",
             ExpressionAttributeNames={"#st": "status"},
-            ExpressionAttributeValues={":s": "pending"}
+            ExpressionAttributeValues={
+                ":s": "linked",
+                ":e": True
+            }
         )
-        return response.get("Items", [])
+        items = response.get("Items", [])
+        print(f"[INFO] Found {len(items)} linked videos ready for analytics")
+        return items
     except Exception as e:
-        print(f"❌ Failed to get pending videos: {e}")
+        print(f"❌ Failed to get linked videos: {e}")
         return []
+
+
+# Legacy alias for backward compatibility
+def get_pending_videos(region_name: str = None) -> List[Dict]:
+    """DEPRECATED: Use get_linked_videos instead."""
+    return get_linked_videos(region_name)
 
 
 # ============================================================================
@@ -316,8 +342,10 @@ def get_pending_videos(region_name: str = None) -> List[Dict]:
 
 def fetch_all_pending_metrics(region_name: str = None) -> Dict:
     """
-    Main function: Fetch metrics for all pending videos.
-    Called by scheduled Lambda.
+    Main function: Fetch metrics for all linked videos.
+    Called by scheduled Lambda (23:00 UTC daily).
+    
+    Selection: status="linked" AND calibration_eligible=true AND youtube_video_id exists
     
     Retry window:
     - <24 hours: Skip (analytics not ready)
@@ -329,44 +357,62 @@ def fetch_all_pending_metrics(region_name: str = None) -> Dict:
     try:
         youtube_analytics, youtube_data = build_youtube_client(region_name)
     except Exception as e:
+        print(f"[ERROR] Failed to build YouTube client: {e}")
         return {"error": str(e), "results": results}
     
-    pending = get_pending_videos(region_name)
-    print(f"[INFO] Found {len(pending)} pending videos")
+    # Get linked videos (not pending - linked means youtube_video_id is set)
+    linked_videos = get_linked_videos(region_name)
+    
+    if not linked_videos:
+        print("[INFO] No linked videos found for analytics fetching")
+        return {"results": results}
     
     now = datetime.now()
     
-    for video in pending:
-        video_id = video["video_id"]
-        upload_date = video.get("upload_date", "")
+    for video in linked_videos:
+        video_id = video["video_id"]  # DynamoDB record ID (pending_...)
+        youtube_video_id = video.get("youtube_video_id")  # Actual YouTube video ID
+        
+        if not youtube_video_id:
+            print(f"[SKIP] {video_id} - no youtube_video_id (shouldn't happen)")
+            results["skipped"] += 1
+            continue
+        
+        # Use publish_time_utc for age calculation
+        publish_time = video.get("publish_time_utc") or video.get("upload_date", "")
         retry_count = int(video.get("retry_count", 0))
         
         # Calculate video age
         hours_old = 0
-        if upload_date:
+        if publish_time:
             try:
-                upload_dt = datetime.fromisoformat(upload_date.replace("Z", "+00:00"))
+                publish_dt = datetime.fromisoformat(publish_time.replace("Z", "+00:00"))
                 # Handle timezone-aware/naive datetime comparison
-                if upload_dt.tzinfo:
-                    now_aware = datetime.now(upload_dt.tzinfo)
-                    hours_old = (now_aware - upload_dt).total_seconds() / 3600
+                if publish_dt.tzinfo:
+                    now_aware = datetime.now(publish_dt.tzinfo)
+                    hours_old = (now_aware - publish_dt).total_seconds() / 3600
                 else:
-                    hours_old = (now - upload_dt).total_seconds() / 3600
-            except:
+                    hours_old = (now - publish_dt).total_seconds() / 3600
+            except Exception as e:
+                print(f"[WARNING] Failed to parse publish_time for {video_id}: {e}")
                 hours_old = 48  # Assume middle range if can't parse
+        else:
+            hours_old = 48  # Default to middle range
         
-        # Skip if less than 24 hours old
+        # Skip if less than 24 hours old (analytics not ready)
         if hours_old < 24:
             print(f"[SKIP] {video_id} - only {hours_old:.1f} hours old (need 24+)")
             results["skipped"] += 1
             continue
         
-        # Fetch metrics
-        metrics = get_video_metrics(youtube_analytics, video_id)
+        # Fetch metrics using YOUTUBE video ID (not DynamoDB ID)
+        print(f"[FETCH] {video_id} -> YouTube ID: {youtube_video_id} ({hours_old:.1f}h old)")
+        metrics = get_video_metrics(youtube_analytics, youtube_video_id)
         
         if "error" not in metrics:
             # Success - update with actual metrics
             update_with_actual_metrics(video_id, metrics, region_name)
+            print(f"[SUCCESS] {video_id} - actual_retention: {metrics.get('avg_view_percentage', 0):.1f}%")
             results["success"] += 1
         elif metrics.get("error") == "no_data":
             # No data yet - check if we should retry or give up
@@ -385,6 +431,7 @@ def fetch_all_pending_metrics(region_name: str = None) -> Dict:
             print(f"[ERROR] {video_id}: {metrics['error']}")
             results["failed"] += 1
     
+    print(f"[SUMMARY] success={results['success']}, failed={results['failed']}, skipped={results['skipped']}, retry_later={results['retry_later']}")
     return {"results": results}
 
 

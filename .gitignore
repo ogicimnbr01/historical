@@ -30,6 +30,7 @@ env/
 *.tfstate.*
 *.tfplan
 .terraform.lock.hcl
+terraform/files/
 
 # SECURITY: Sensitive terraform files - NEVER COMMIT WITH REAL VALUES
 terraform/terraform.tfvars
