@@ -1,0 +1,104 @@
+{
+    "video_id": {
+        "S": "autopilot_config"
+    },
+    "version": {
+        "N": "1"
+    },
+    "updated_at_utc": {
+        "S": "2026-02-05T15:03:00Z"
+    },
+    "mode_weights": {
+        "M": {
+            "QUALITY": {
+                "N": "0.75"
+            },
+            "FAST": {
+                "N": "0.25"
+            }
+        }
+    },
+    "title_weights": {
+        "M": {
+            "bold": {
+                "N": "0.5"
+            },
+            "safe": {
+                "N": "0.4"
+            },
+            "experimental": {
+                "N": "0.1"
+            }
+        }
+    },
+    "hook_family_weights": {
+        "M": {
+            "contradiction": {
+                "N": "0.25"
+            },
+            "revelation": {
+                "N": "0.25"
+            },
+            "challenge": {
+                "N": "0.25"
+            },
+            "contrast": {
+                "N": "0.25"
+            }
+        }
+    },
+    "explore_rate": {
+        "N": "0.20"
+    },
+    "daily_max_delta": {
+        "N": "0.10"
+    },
+    "quality_bounds": {
+        "M": {
+            "min": {
+                "N": "0.30"
+            },
+            "max": {
+                "N": "0.90"
+            }
+        }
+    },
+    "min_complete_per_day": {
+        "N": "3"
+    },
+    "recovery_mode": {
+        "BOOL": false
+    },
+    "recovery_videos_remaining": {
+        "N": "0"
+    },
+    "recovery_preset": {
+        "M": {
+            "mode": {
+                "S": "QUALITY"
+            },
+            "title": {
+                "S": "safe"
+            },
+            "duration_videos": {
+                "N": "3"
+            }
+        }
+    },
+    "bandit_state": {
+        "M": {}
+    },
+    "prompt_memory": {
+        "M": {
+            "do_examples": {
+                "L": []
+            },
+            "dont_examples": {
+                "L": []
+            }
+        }
+    },
+    "update_history": {
+        "L": []
+    }
+}

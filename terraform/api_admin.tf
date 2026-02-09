@@ -22,7 +22,12 @@ resource "aws_lambda_function" "admin_api" {
 
   environment {
     variables = {
-      METRICS_TABLE_NAME = aws_dynamodb_table.video_metrics.name
+      METRICS_TABLE_NAME      = aws_dynamodb_table.video_metrics.name
+      JOBS_TABLE_NAME         = aws_dynamodb_table.jobs.name
+      RUN_LOGS_TABLE_NAME     = aws_dynamodb_table.run_logs.name
+      RATE_LIMITS_TABLE_NAME  = aws_dynamodb_table.rate_limits.name
+      VIDEO_CREATOR_FUNC_NAME = aws_lambda_function.video_generator.function_name
+      AWS_REGION_NAME         = var.aws_region
     }
   }
 }
@@ -383,11 +388,19 @@ resource "aws_api_gateway_deployment" "admin_deployment" {
       aws_api_gateway_resource.videos,
       aws_api_gateway_resource.videos_id,
       aws_api_gateway_resource.videos_bulk,
+      aws_api_gateway_resource.generate,
+      aws_api_gateway_resource.jobs,
+      aws_api_gateway_resource.jobs_id,
+      aws_api_gateway_resource.logs,
       aws_api_gateway_method.stats_get,
       aws_api_gateway_method.videos_get,
       aws_api_gateway_method.videos_id_get,
       aws_api_gateway_method.videos_id_patch,
       aws_api_gateway_method.videos_bulk_post,
+      aws_api_gateway_method.generate_post,
+      aws_api_gateway_method.jobs_get,
+      aws_api_gateway_method.jobs_id_get,
+      aws_api_gateway_method.logs_get,
     ]))
   }
 
@@ -406,6 +419,14 @@ resource "aws_api_gateway_deployment" "admin_deployment" {
     aws_api_gateway_integration.videos_id_options,
     aws_api_gateway_integration.videos_bulk_post,
     aws_api_gateway_integration.videos_bulk_options,
+    aws_api_gateway_integration.generate_post,
+    aws_api_gateway_integration.generate_options,
+    aws_api_gateway_integration.jobs_get,
+    aws_api_gateway_integration.jobs_options,
+    aws_api_gateway_integration.jobs_id_get,
+    aws_api_gateway_integration.jobs_id_options,
+    aws_api_gateway_integration.logs_get,
+    aws_api_gateway_integration.logs_options,
   ]
 }
 

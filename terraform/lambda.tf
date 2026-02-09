@@ -17,9 +17,12 @@ resource "aws_lambda_function" "video_generator" {
 
   environment {
     variables = {
-      S3_BUCKET_NAME  = aws_s3_bucket.videos.id
-      SNS_TOPIC_ARN   = aws_sns_topic.video_ready.arn
-      AWS_REGION_NAME = var.aws_region
+      S3_BUCKET_NAME      = aws_s3_bucket.videos.id
+      SNS_TOPIC_ARN       = aws_sns_topic.video_ready.arn
+      AWS_REGION_NAME     = var.aws_region
+      METRICS_TABLE_NAME  = aws_dynamodb_table.video_metrics.name
+      JOBS_TABLE_NAME     = aws_dynamodb_table.jobs.name
+      RUN_LOGS_TABLE_NAME = aws_dynamodb_table.run_logs.name
     }
   }
 

@@ -198,6 +198,9 @@ def save_video_with_predictions(
     title_used: str = "",
     # Calibration eligibility
     calibration_eligible: bool = True,  # False if fallback used
+    # Autopilot tracking (NEW)
+    hook_family: str = "unknown",  # contradiction, revelation, challenge, contrast
+    autopilot_config_version: int = 0,
     # AWS
     region_name: str = None
 ) -> bool:
@@ -210,8 +213,9 @@ def save_video_with_predictions(
     CALIBRATION FIELDS:
     - Predictions: predicted_retention, hook_score, instant_clarity, curiosity_gap, swipe_risk
     - Content: era, topic_entity, visual_relevance
-    - Distribution: mode, title_variant_type
+    - Distribution: mode, title_variant_type, hook_family
     - Integrity: pipeline_executed, calibration_eligible
+    - Autopilot: hook_family, autopilot_config_version
     - Results (filled later): actual_retention, analytics_fetched_at_utc
     """
     region = region_name or os.environ.get("AWS_REGION_NAME", "us-east-1")
@@ -250,6 +254,10 @@ def save_video_with_predictions(
             "title_variant_type": title_variant_type,
             "title_used": title_used,
             
+            # Autopilot tracking (NEW)
+            "hook_family": hook_family,
+            "autopilot_config_version": autopilot_config_version,
+            
             # Calibration integrity
             "calibration_eligible": calibration_eligible,
             
@@ -264,7 +272,7 @@ def save_video_with_predictions(
         
         table.put_item(Item=item)
         eligible_str = "ELIGIBLE" if calibration_eligible else "INELIGIBLE (fallback)"
-        print(f"[OK] Saved video {video_id} | {pipeline_executed} | {eligible_str} | predicted={predicted_retention}%")
+        print(f"[OK] Saved video {video_id} | {pipeline_executed} | {eligible_str} | mode={mode} | hook_family={hook_family} | config_v={autopilot_config_version}")
         return True
         
     except Exception as e:
@@ -275,29 +283,131 @@ def save_video_with_predictions(
 def update_with_actual_metrics(video_id: str, metrics: Dict, region_name: str = None) -> bool:
     """
     Update video record with actual YouTube metrics.
+    Sends low-performance alert if actual_retention < 20%.
     """
     region = region_name or os.environ.get("AWS_REGION_NAME", "us-east-1")
     dynamodb = boto3.resource("dynamodb", region_name=region)
     table = dynamodb.Table(METRICS_TABLE_NAME)
     
+    actual_retention = metrics.get("avg_view_percentage", 0)
+    
     try:
+        # First, get the current video data for alert purposes
+        current = table.get_item(Key={"video_id": video_id}).get("Item", {})
+        
         table.update_item(
             Key={"video_id": video_id},
             UpdateExpression="SET actual_retention = :ar, views = :v, avg_duration_s = :ad, analytics_fetched_at_utc = :fd, #st = :s",
             ExpressionAttributeNames={"#st": "status"},
             ExpressionAttributeValues={
-                ":ar": str(metrics.get("avg_view_percentage", 0)),
+                ":ar": str(actual_retention),
                 ":v": str(metrics.get("views", 0)),
                 ":ad": str(metrics.get("avg_view_duration_seconds", 0)),
                 ":fd": datetime.now().isoformat(),
                 ":s": "complete"
             }
         )
-        print(f"✅ Updated video {video_id} with actual retention: {metrics.get('avg_view_percentage')}%")
+        print(f"✅ Updated video {video_id} with actual retention: {actual_retention}%")
+        
+        # LOW-PERFORMANCE ALERT: Send if actual_retention < 20%
+        if actual_retention < 20:
+            send_low_performance_alert(video_id, actual_retention, current, region)
+        
         return True
     except Exception as e:
         print(f"❌ Failed to update video metrics: {e}")
         return False
+
+
+def send_low_performance_alert(video_id: str, actual_retention: float, video_data: Dict, region_name: str = None):
+    """
+    Send SNS alert for low-performing videos (actual_retention < 20%).
+    
+    Alert contains:
+    - video_id, title_used, mode
+    - predicted vs actual retention
+    - KPI metrics: instant_clarity, curiosity_gap, swipe_risk, visual_relevance
+    - YouTube URL for quick review
+    """
+    region = region_name or os.environ.get("AWS_REGION_NAME", "us-east-1")
+    sns_topic_arn = os.environ.get("SNS_TOPIC_ARN")
+    
+    if not sns_topic_arn:
+        print("⚠️ SNS_TOPIC_ARN not set, skipping low-performance alert")
+        return
+    
+    try:
+        sns = boto3.client("sns", region_name=region)
+        
+        # Extract video details
+        title_used = video_data.get("title_used", "N/A")
+        mode = video_data.get("mode", "N/A")
+        predicted = video_data.get("predicted_retention", "N/A")
+        youtube_video_id = video_data.get("youtube_video_id", "")
+        
+        # KPI metrics
+        kpi = video_data.get("hook_kpi", {})
+        if isinstance(kpi, str):
+            try:
+                kpi = json.loads(kpi)
+            except:
+                kpi = {}
+        
+        instant_clarity = kpi.get("instant_clarity", "N/A")
+        curiosity_gap = kpi.get("curiosity_gap", "N/A")
+        swipe_risk = kpi.get("swipe_risk", "N/A")
+        
+        # Hook details
+        hook_score = video_data.get("hook_score", "N/A")
+        visual_relevance = video_data.get("visual_relevance", {})
+        if isinstance(visual_relevance, str):
+            try:
+                visual_relevance = json.loads(visual_relevance)
+            except:
+                visual_relevance = {}
+        visual_score = visual_relevance.get("visual_relevance", "N/A")
+        
+        # YouTube URL
+        youtube_url = f"https://youtube.com/shorts/{youtube_video_id}" if youtube_video_id else "N/A"
+        
+        # Build alert message
+        message = f"""🚨 LOW PERFORMANCE ALERT
+
+📹 Video: {video_id}
+📝 Title: {title_used}
+🎬 Mode: {mode}
+
+📊 RETENTION
+   Predicted: {predicted}%
+   Actual:    {actual_retention:.1f}%
+   Variance:  {float(predicted or 0) - actual_retention:.1f}%
+
+🎯 HOOK KPI
+   Hook Score:      {hook_score}
+   Instant Clarity: {instant_clarity}
+   Curiosity Gap:   {curiosity_gap}
+   Swipe Risk:      {swipe_risk}
+   Visual Relevance: {visual_score}
+
+🔗 YouTube: {youtube_url}
+
+---
+Investigate: What made viewers swipe?
+• Check first 3 seconds visually
+• Compare hook to successful videos
+• Check visual-script alignment
+"""
+        
+        sns.publish(
+            TopicArn=sns_topic_arn,
+            Subject=f"🚨 Low Retention: {actual_retention:.0f}% - {title_used[:40]}",
+            Message=message
+        )
+        
+        print(f"📧 Low-performance alert sent for {video_id} (actual: {actual_retention:.1f}%)")
+        
+    except Exception as e:
+        print(f"⚠️ Failed to send low-performance alert: {e}")
 
 
 def get_linked_videos(region_name: str = None) -> List[Dict]:

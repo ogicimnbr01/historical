@@ -7,9 +7,12 @@ All content is AI-generated and copyright-safe
 
 import json
 import os
+import random
 import boto3
 import logging
-from datetime import datetime
+import uuid
+from datetime import datetime, timedelta
+from decimal import Decimal
 
 from script_gen import generate_history_script
 from script_pipeline import generate_script_with_fallback
@@ -34,19 +37,198 @@ logger.setLevel(logging.INFO)
 s3 = boto3.client('s3')
 sns = boto3.client('sns')
 
+# DynamoDB for job tracking and structured logging
+dynamodb = boto3.resource('dynamodb')
+JOBS_TABLE_NAME = os.environ.get('JOBS_TABLE_NAME', 'shorts_jobs')
+RUN_LOGS_TABLE_NAME = os.environ.get('RUN_LOGS_TABLE_NAME', 'shorts_run_logs')
+
+try:
+    jobs_table = dynamodb.Table(JOBS_TABLE_NAME)
+    logs_table = dynamodb.Table(RUN_LOGS_TABLE_NAME)
+    JOB_TRACKING_ENABLED = True
+except Exception as e:
+    logger.warning(f"Job tracking disabled: {e}")
+    JOB_TRACKING_ENABLED = False
+
+
+# =============================================================================
+# JOB STATUS & STRUCTURED LOGGING HELPERS
+# =============================================================================
+
+def update_job_status(job_id: str, status: str, **extra_fields):
+    """
+    Update job status in DynamoDB.
+    Status: queued -> running -> completed | failed
+    """
+    if not JOB_TRACKING_ENABLED or not job_id:
+        return
+    
+    try:
+        update_expr = "SET #status = :status, updated_at_utc = :updated"
+        expr_values = {
+            ":status": status,
+            ":updated": datetime.utcnow().isoformat() + "Z"
+        }
+        expr_names = {"#status": "status"}
+        
+        for key, value in extra_fields.items():
+            update_expr += f", {key} = :{key}"
+            expr_values[f":{key}"] = value
+        
+        jobs_table.update_item(
+            Key={"job_id": job_id},
+            UpdateExpression=update_expr,
+            ExpressionAttributeNames=expr_names,
+            ExpressionAttributeValues=expr_values
+        )
+        logger.info(f"[JOB] {job_id} -> {status}")
+    except Exception as e:
+        logger.warning(f"Failed to update job status: {e}")
+
+
+def log_event(job_id: str, component: str, level: str, event: str, message: str, payload: dict = None):
+    """
+    Write structured log entry to DynamoDB run_logs table.
+    
+    Args:
+        job_id: The job this log belongs to
+        component: video_generator / analytics_fetcher / decision_engine
+        level: INFO / WARN / ERROR
+        event: STEP_START / METRICS / FALLBACK_USED / COMPLETE / etc.
+        message: Human-readable message
+        payload: Optional structured data
+    """
+    if not JOB_TRACKING_ENABLED or not job_id:
+        return
+    
+    try:
+        ts = datetime.utcnow()
+        seq = uuid.uuid4().hex[:8]
+        sk = f"{ts.isoformat()}Z#{component}#{seq}"
+        
+        item = {
+            "pk": job_id,
+            "sk": sk,
+            "job_id": job_id,
+            "ts_utc": ts.isoformat() + "Z",
+            "component": component,
+            "level": level,
+            "event": event,
+            "message": message,
+            "expires_at": int((ts + timedelta(days=14)).timestamp()),
+            # GSI for querying by component/day
+            "gsi1pk": f"{component}#{ts.strftime('%Y-%m-%d')}",
+            "gsi1sk": ts.isoformat() + "Z"
+        }
+        
+        if payload:
+            # Convert any Decimal-incompatible types
+            item["payload"] = json.loads(json.dumps(payload, default=str))
+        
+        logs_table.put_item(Item=item)
+        logger.info(f"[LOG] {component}/{level}/{event}: {message}")
+    except Exception as e:
+        logger.warning(f"Failed to write log event: {e}")
+
+
+# =============================================================================
+# AUTOPILOT HELPERS
+# =============================================================================
+
+def load_autopilot_config(region_name: str = None) -> dict:
+    """
+    Load autopilot configuration from DynamoDB.
+    Returns default config if not found.
+    """
+    region = region_name or os.environ.get("AWS_REGION_NAME", "us-east-1")
+    table_name = os.environ.get("METRICS_TABLE_NAME", "shorts_video_metrics")
+    
+    try:
+        dynamodb = boto3.resource("dynamodb", region_name=region)
+        table = dynamodb.Table(table_name)
+        response = table.get_item(Key={"video_id": "autopilot_config"})
+        
+        if "Item" in response:
+            logger.info("🤖 Loaded autopilot config from DynamoDB")
+            return response["Item"]
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to load autopilot config: {e}")
+    
+    # Return default config
+    logger.info("🤖 Using default autopilot config")
+    return {
+        "mode_weights": {"QUALITY": 0.7, "FAST": 0.3},
+        "title_weights": {"bold": 0.5, "safe": 0.3, "experimental": 0.2},
+        "hook_family_weights": {
+            "contradiction": 0.3,
+            "revelation": 0.25,
+            "challenge": 0.25,
+            "contrast": 0.2
+        },
+        "explore_rate": 0.2,
+        "prompt_memory": {},
+        "recovery_mode": False
+    }
+
+
+def weighted_random_choice(weights: dict) -> str:
+    """
+    Select a random key based on weights.
+    
+    Args:
+        weights: Dict like {"QUALITY": 0.7, "FAST": 0.3}
+    
+    Returns:
+        Selected key
+    """
+    if not weights:
+        return "QUALITY"  # Default
+    
+    # Convert to lists
+    options = list(weights.keys())
+    probs = [float(weights[k]) for k in options]
+    
+    # Normalize
+    total = sum(probs)
+    if total <= 0:
+        return options[0]
+    
+    probs = [p / total for p in probs]
+    
+    # Random selection
+    r = random.random()
+    cumulative = 0
+    for option, prob in zip(options, probs):
+        cumulative += prob
+        if r <= cumulative:
+            return option
+    
+    return options[-1]  # Fallback
+
 
 def lambda_handler(event, context):
     """
     Main Lambda handler for history video generation
     
     Event can contain:
+    - job_id: Optional job ID for tracking (from admin panel)
     - topic: Specific topic to generate (e.g., "Atatürk's favorite foods")
     - era: Historical era (ancient, medieval, ottoman, early_20th, etc.)
     - use_pipeline: Use new iterative pipeline (default: True)
+    - mark_as_test: Mark video as test (calibration_eligible=false)
     
     If no topic provided, random topic is selected from built-in list
     """
     logger.info("🏛️ Starting History Shorts video generation...")
+    
+    # Extract job_id for tracking (if coming from admin panel)
+    job_id = event.get('job_id') if event else None
+    mark_as_test = event.get('mark_as_test', False) if event else False
+    
+    # Update job status to running
+    if job_id:
+        update_job_status(job_id, "running", started_at_utc=datetime.utcnow().isoformat() + "Z")
+        log_event(job_id, "video_generator", "INFO", "STEP_START", "Video generation started")
     
     # Reset copyright tracker for this new video
     tracker = reset_copyright_tracker()
@@ -55,10 +237,57 @@ def lambda_handler(event, context):
     try:
         region = os.environ.get('AWS_REGION_NAME', 'us-east-1')
         
-        # Get parameters from event
+        # =====================================================================
+        # AUTOPILOT: Load config and select production parameters
+        # =====================================================================
+        autopilot_config = load_autopilot_config(region)
+        config_version = autopilot_config.get('version', 0)
+        
+        # Weighted random selection for mode (QUALITY vs FAST)
+        mode_weights = autopilot_config.get('mode_weights', {'QUALITY': 0.7, 'FAST': 0.3})
+        selected_mode = weighted_random_choice(mode_weights)
+        use_pipeline = (selected_mode == 'QUALITY')  # QUALITY uses full pipeline
+        
+        # Weighted random selection for title type
+        title_weights = autopilot_config.get('title_weights', {'bold': 0.5, 'safe': 0.3, 'experimental': 0.2})
+        selected_title_type = weighted_random_choice(title_weights)
+        
+        # Weighted random selection for hook family
+        hook_family_weights = autopilot_config.get('hook_family_weights', {
+            'contradiction': 0.25, 'revelation': 0.25, 'challenge': 0.25, 'contrast': 0.25
+        })
+        selected_hook_family = weighted_random_choice(hook_family_weights)
+        
+        # Get prompt memory for writer/evaluator
+        prompt_memory = autopilot_config.get('prompt_memory', {})
+        
+        # Check recovery mode
+        recovery_mode = autopilot_config.get('recovery_mode', False)
+        if recovery_mode:
+            # Override with recovery preset
+            selected_mode = 'QUALITY'
+            selected_title_type = 'safe'
+            selected_hook_family = 'contradiction'  # High-clarity hook family
+            use_pipeline = True
+            logger.warning(f"⚠️ AUTOPILOT: Recovery mode active, {autopilot_config.get('recovery_videos_remaining', 0)} videos remaining")
+        
+        # COMPREHENSIVE SINGLE-LINE LOG for debugging and tracking
+        weights_snapshot = {
+            'mode': {k: float(v) for k, v in mode_weights.items()},
+            'title': {k: float(v) for k, v in title_weights.items()},
+            'hook': {k: float(v) for k, v in hook_family_weights.items()}
+        }
+        logger.info(f"🤖 AUTOPILOT_DECISION | v={config_version} | mode={selected_mode} | title={selected_title_type} | hook={selected_hook_family} | recovery={recovery_mode} | weights={json.dumps(weights_snapshot)}")
+        
+        # Get parameters from event (can override autopilot)
         topic = event.get('topic') if event else None
         era = event.get('era') if event else None
-        use_pipeline = event.get('use_pipeline', True) if event else True  # Default: use new pipeline
+        
+        # Event can force specific mode/title (for testing)
+        if event and event.get('force_mode'):
+            selected_mode = event.get('force_mode')
+            use_pipeline = (selected_mode == 'QUALITY')
+            logger.info(f"🔧 Force override: mode={selected_mode}")
         
         if topic:
             logger.info(f"📜 Generating script for topic: {topic}")
@@ -68,7 +297,20 @@ def lambda_handler(event, context):
         # Step 1: Generate history script using Bedrock Claude
         # Uses new pipeline with scoring/refinement, or falls back to old system
         logger.info(f"🔧 Pipeline mode: {'NEW (v2.0)' if use_pipeline else 'LEGACY (v1.0)'}")
-        script = generate_script_with_fallback(topic=topic, era=era, region_name=region, use_pipeline=use_pipeline)
+        script = generate_script_with_fallback(
+            topic=topic, 
+            era=era, 
+            region_name=region, 
+            use_pipeline=use_pipeline,
+            prompt_memory=prompt_memory  # Pass DO/DON'T examples
+        )
+        
+        # Inject selected title type
+        script['title_variant_type'] = selected_title_type
+        script['autopilot_mode'] = selected_mode
+        script['autopilot_hook_family'] = selected_hook_family
+        script['autopilot_config_version'] = config_version
+        
         logger.info(f"Script generated: {script['title']}")
         logger.info(f"Era: {script.get('era', 'unknown')}, Mood: {script.get('mood', 'documentary')}")
         
@@ -186,8 +428,8 @@ def lambda_handler(event, context):
                 pipeline_scores = script.get('pipeline_scores', {})
                 hook_kpi = pipeline_scores.get('hook_kpi', {})
                 
-                # Get mode from environment or default
-                pipeline_mode = os.environ.get('PIPELINE_MODE', 'quality')
+                # Get mode from AUTOPILOT selection (not env var)
+                pipeline_mode = script.get('autopilot_mode', 'QUALITY')
                 
                 # CRITICAL: Check if fallback was used (pollutes calibration data)
                 fallback_used = script.get('fallback_used', False)
@@ -206,9 +448,11 @@ def lambda_handler(event, context):
                 era = script.get('era', 'unknown')
                 topic_entity = script.get('topic_entity', script.get('original_topic', 'unknown'))
                 
-                # Title variant (default to safe, can be overridden by caller)
+                # Autopilot selections (for full traceability)
                 title_variant_type = script.get('title_variant_type', 'safe')
                 title_used = script.get('title', '')
+                hook_family = script.get('autopilot_hook_family', 'unknown')
+                autopilot_config_version = script.get('autopilot_config_version', 0)
                 
                 # Use timestamp-based ID (will be updated with YouTube ID after upload)
                 internal_video_id = f"pending_{timestamp}"
@@ -231,9 +475,11 @@ def lambda_handler(event, context):
                     title_variant_type=title_variant_type,
                     title_used=title_used[:200] if title_used else "",
                     calibration_eligible=calibration_eligible,
+                    hook_family=hook_family,
+                    autopilot_config_version=autopilot_config_version,
                     region_name=region
                 )
-                logger.info(f"[CALIBRATION] Saved: {pipeline_executed} | eligible={calibration_eligible} | predicted={predicted_retention}%")
+                logger.info(f"[CALIBRATION] Saved: {pipeline_executed} | mode={pipeline_mode} | hook_family={hook_family} | config_v={autopilot_config_version}")
             except Exception as e:
                 logger.warning(f"[WARNING] Failed to save video metrics: {e}")
         
@@ -273,6 +519,19 @@ Music: AI-Generated
         
         logger.info("✅ History video generation complete!")
         
+        # Update job status to completed
+        if job_id:
+            result_video_id = internal_video_id if ANALYTICS_AVAILABLE else s3_key
+            update_job_status(
+                job_id, "completed",
+                completed_at_utc=datetime.utcnow().isoformat() + "Z",
+                result_video_id=result_video_id,
+                result_s3_key=s3_key
+            )
+            log_event(job_id, "video_generator", "INFO", "COMPLETE", 
+                      f"Video generated successfully: {script['title']}", 
+                      {"s3_key": s3_key, "title": script['title']})
+        
         return {
             'statusCode': 200,
             'body': json.dumps({
@@ -284,12 +543,24 @@ Music: AI-Generated
                 'download_url': presigned_url,
                 'copyright_status': 'All content is AI-generated',
                 'sources_used': sources_used,
-                'license_report': license_s3_key
+                'license_report': license_s3_key,
+                'job_id': job_id
             })
         }
         
     except Exception as e:
         logger.error(f"❌ Error generating video: {str(e)}")
+        
+        # Update job status to failed
+        if job_id:
+            update_job_status(
+                job_id, "failed",
+                completed_at_utc=datetime.utcnow().isoformat() + "Z",
+                error_message=str(e)
+            )
+            log_event(job_id, "video_generator", "ERROR", "FAILED", 
+                      f"Video generation failed: {str(e)}")
+        
         raise e
 
 

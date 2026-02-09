@@ -522,6 +522,253 @@ document.getElementById('videoModal').addEventListener('click', function (e) {
 });
 
 // ============================================================================
+// System Activity / Jobs Page
+// ============================================================================
+function showSystemActivity() {
+    document.getElementById('dashboard').classList.add('hidden');
+    document.getElementById('videoList').classList.add('hidden');
+    document.getElementById('systemActivity').classList.remove('hidden');
+    document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.nav-btn')[2].classList.add('active');
+    loadSystemActivity();
+}
+
+async function loadSystemActivity() {
+    if (!CONFIG.API_KEY) {
+        showToast('Please set API key first', 'error');
+        return;
+    }
+
+    const timeline = document.getElementById('jobsTimeline');
+    timeline.innerHTML = '<p class="loading-text">Loading jobs...</p>';
+
+    try {
+        const params = new URLSearchParams();
+        const statusFilter = document.getElementById('jobStatusFilter')?.value;
+        if (statusFilter) params.append('status', statusFilter);
+
+        const endpoint = params.toString() ? `/jobs?${params}` : '/jobs';
+        const data = await apiCall(endpoint);
+        const jobs = data.jobs || [];
+
+        if (jobs.length === 0) {
+            timeline.innerHTML = '<p class="loading-text">No jobs found in the last 24 hours</p>';
+            return;
+        }
+
+        timeline.innerHTML = jobs.map(job => `
+            <div class="job-card ${job.status}">
+                <div class="job-header">
+                    <span class="job-id">${job.job_id}</span>
+                    <span class="job-status ${job.status}">${job.status}</span>
+                </div>
+                <div class="job-details">
+                    <div>📅 Requested: ${formatDate(job.requested_at_utc)}</div>
+                    ${job.params ? `<div>⚙️ Mode: ${job.params.mode || 'auto'} | Title: ${job.params.title_variant || 'auto'}</div>` : ''}
+                    ${job.result_video_id ? `<div>🎬 Video: ${job.result_video_id}</div>` : ''}
+                    ${job.error_message ? `<div>❌ Error: ${job.error_message}</div>` : ''}
+                </div>
+                <div class="job-actions">
+                    <button class="action-btn view" onclick="viewJobLogs('${job.job_id}')">📋 View Logs</button>
+                    ${job.result_video_id ? `<button class="action-btn" onclick="viewVideo('${job.result_video_id}')">🎬 View Video</button>` : ''}
+                </div>
+            </div>
+        `).join('');
+    } catch (error) {
+        console.error('Failed to load jobs:', error);
+        timeline.innerHTML = `<p class="loading-text">Error: ${error.message}</p>`;
+        showToast('Failed to load jobs: ' + error.message, 'error');
+    }
+}
+
+// ============================================================================
+// Video Generation
+// ============================================================================
+let currentLogsJobId = null;
+let currentLogsData = [];
+
+async function generateVideo() {
+    if (!CONFIG.API_KEY) {
+        showToast('Please set API key first', 'error');
+        return;
+    }
+
+    const mode = document.getElementById('genMode').value;
+    const titleVariant = document.getElementById('genTitleVariant').value;
+    const topicOverride = document.getElementById('genTopic').value.trim();
+    const calibrationEligible = document.getElementById('genEligible').checked;
+
+    // Generate client_request_id for idempotency
+    const clientRequestId = 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+    const payload = {
+        mode: mode,
+        title_variant: titleVariant,
+        calibration_eligible: calibrationEligible,
+        client_request_id: clientRequestId
+    };
+
+    if (topicOverride) {
+        payload.topic_override = topicOverride;
+    }
+
+    try {
+        showToast('🚀 Starting video generation...', 'info');
+        const response = await apiCall('/generate', 'POST', payload);
+
+        if (response.job_id) {
+            showToast(`✅ Video generation started! Job: ${response.job_id}`, 'success');
+            // Navigate to system activity
+            showSystemActivity();
+        }
+    } catch (error) {
+        console.error('Generate failed:', error);
+        showToast('Failed to start generation: ' + error.message, 'error');
+    }
+}
+
+async function generateTestVideo() {
+    if (!CONFIG.API_KEY) {
+        showToast('Please set API key first', 'error');
+        return;
+    }
+
+    if (!confirm('Generate a TEST video? This will be marked as calibration_ineligible with status=test')) {
+        return;
+    }
+
+    const mode = document.getElementById('genMode').value;
+    const titleVariant = document.getElementById('genTitleVariant').value;
+    const topicOverride = document.getElementById('genTopic').value.trim();
+
+    const clientRequestId = 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+    const payload = {
+        mode: mode,
+        title_variant: titleVariant,
+        calibration_eligible: false,
+        mark_as_test: true,
+        client_request_id: clientRequestId
+    };
+
+    if (topicOverride) {
+        payload.topic_override = topicOverride;
+    }
+
+    try {
+        showToast('🧪 Starting TEST video generation...', 'info');
+        const response = await apiCall('/generate', 'POST', payload);
+
+        if (response.job_id) {
+            showToast(`✅ TEST video generation started! Job: ${response.job_id}`, 'success');
+            showSystemActivity();
+        }
+    } catch (error) {
+        console.error('Generate test failed:', error);
+        showToast('Failed to start test generation: ' + error.message, 'error');
+    }
+}
+
+// ============================================================================
+// Logs Modal
+// ============================================================================
+async function viewJobLogs(jobId) {
+    currentLogsJobId = jobId;
+    currentLogsData = [];
+
+    document.getElementById('logsModalTitle').textContent = `📋 Logs: ${jobId}`;
+    document.getElementById('logsContainer').innerHTML = '<p class="loading-text">Loading logs...</p>';
+    document.getElementById('logsModal').classList.remove('hidden');
+
+    try {
+        const data = await apiCall(`/logs?job_id=${encodeURIComponent(jobId)}`);
+        currentLogsData = data.logs || [];
+
+        renderLogs(currentLogsData);
+    } catch (error) {
+        console.error('Failed to load logs:', error);
+        document.getElementById('logsContainer').innerHTML = `<p class="loading-text">Error: ${error.message}</p>`;
+    }
+}
+
+function renderLogs(logs) {
+    const container = document.getElementById('logsContainer');
+
+    if (logs.length === 0) {
+        container.innerHTML = '<p class="loading-text">No logs found for this job</p>';
+        return;
+    }
+
+    container.innerHTML = logs.map(log => `
+        <div class="log-entry">
+            <span class="log-time">${formatLogTime(log.ts_utc)}</span>
+            <span class="log-level ${log.level}">${log.level}</span>
+            <span class="log-component">${log.component}</span>
+            <span class="log-message">${log.message || log.event}</span>
+        </div>
+    `).join('');
+}
+
+function formatLogTime(isoString) {
+    if (!isoString) return '--:--:--';
+    const date = new Date(isoString);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function filterLogs() {
+    const componentFilter = document.getElementById('logComponentFilter').value;
+    const levelFilter = document.getElementById('logLevelFilter').value;
+
+    let filtered = currentLogsData;
+
+    if (componentFilter) {
+        filtered = filtered.filter(log => log.component === componentFilter);
+    }
+    if (levelFilter) {
+        filtered = filtered.filter(log => log.level === levelFilter);
+    }
+
+    renderLogs(filtered);
+}
+
+function closeLogsModal() {
+    document.getElementById('logsModal').classList.add('hidden');
+    currentLogsJobId = null;
+    currentLogsData = [];
+    // Reset filters
+    document.getElementById('logComponentFilter').value = '';
+    document.getElementById('logLevelFilter').value = '';
+}
+
+// Close logs modal on outside click
+document.getElementById('logsModal')?.addEventListener('click', function (e) {
+    if (e.target === this) {
+        closeLogsModal();
+    }
+});
+
+// ============================================================================
+// Toast Notifications
+// ============================================================================
+function showToast(message, type = 'info') {
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+
+    container.appendChild(toast);
+
+    // Auto-remove after 4 seconds
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(100px)';
+        setTimeout(() => toast.remove(), 300);
+    }, 4000);
+}
+
+// ============================================================================
 // Initialize
 // ============================================================================
 document.addEventListener('DOMContentLoaded', function () {

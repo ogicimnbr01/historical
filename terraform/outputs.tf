@@ -27,3 +27,8 @@ output "eventbridge_rule_name" {
   description = "EventBridge schedule rule name"
   value       = aws_cloudwatch_event_rule.video_schedule.name
 }
+
+output "admin_panel_url" {
+  description = "Admin panel URL (CloudFront)"
+  value       = "https://${aws_cloudfront_distribution.admin_panel.domain_name}"
+}

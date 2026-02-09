@@ -11,6 +11,7 @@ Key Optimizations for AWS Bedrock:
 - JSON fail-safe with repair attempts
 - Exponential backoff for throttling
 - Anchor examples for score calibration
+- Autopilot prompt memory (DO/DON'T examples)
 """
 
 import json
@@ -48,6 +49,41 @@ SECTION_MAX_ITERATIONS = 3    # Max section refinement rounds
 # Retry settings for throttling
 MAX_RETRIES = 5
 INITIAL_BACKOFF = 0.5         # seconds
+
+# ============================================================================
+# AUTOPILOT PROMPT MEMORY
+# ============================================================================
+
+# Global storage for DO/DON'T examples (set by handler via generate_script_with_fallback)
+_prompt_memory = {}
+
+def format_prompt_memory() -> str:
+    """
+    Format DO/DON'T examples for injection into writer/evaluator prompts.
+    Returns empty string if no examples.
+    """
+    if not _prompt_memory:
+        return ""
+    
+    do_examples = _prompt_memory.get("do_examples", [])
+    dont_examples = _prompt_memory.get("dont_examples", [])
+    
+    if not do_examples and not dont_examples:
+        return ""
+    
+    sections = ["\n\n📊 LEARNED FROM REAL PERFORMANCE:"]
+    
+    if do_examples:
+        sections.append("✅ DO (high retention):")
+        for ex in do_examples[:5]:
+            sections.append(f"- {ex}")
+    
+    if dont_examples:
+        sections.append("❌ DON'T (low retention):")
+        for ex in dont_examples[:5]:
+            sections.append(f"- {ex}")
+    
+    return "\n".join(sections)
 JITTER_MAX = 0.3              # Max random jitter (0-30% of backoff)
 
 # Cost control limits
@@ -1285,13 +1321,17 @@ def generate_script_with_fallback(
     topic: str = None,
     era: str = None,
     region_name: str = None,
-    use_pipeline: bool = True
+    use_pipeline: bool = True,
+    prompt_memory: dict = None
 ) -> dict:
     """
     Generate script with automatic fallback to old system.
     
     If pipeline fails or is disabled, falls back to script_gen.py.
     Adds warnings to output when fallback is used.
+    
+    Args:
+        prompt_memory: DO/DON'T examples from autopilot for writer/evaluator prompts
     """
     if not use_pipeline:
         from script_gen import generate_history_script
@@ -1300,6 +1340,10 @@ def generate_script_with_fallback(
         return result
     
     try:
+        # Pass prompt_memory to pipeline (stored as global for prompt injection)
+        if prompt_memory:
+            global _prompt_memory
+            _prompt_memory = prompt_memory
         return generate_script_pipeline(topic=topic, era=era, region_name=region_name)
     except Exception as e:
         print(f"⚠️ Pipeline failed, falling back to old system: {e}")

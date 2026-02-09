@@ -21,6 +21,7 @@
         <nav class="nav">
             <button class="nav-btn active" onclick="showDashboard()">Dashboard</button>
             <button class="nav-btn" onclick="showVideoList()">Videos</button>
+            <button class="nav-btn" onclick="showSystemActivity()">🚀 System Activity</button>
         </nav>
 
         <main id="content">
@@ -71,6 +72,68 @@
                         <span class="metric-value" id="metricEligibleRate">-</span>
                         <span class="metric-label">Eligible Rate</span>
                     </div>
+                </div>
+
+                <!-- Generate Video Card -->
+                <div class="generate-card">
+                    <h3>🎬 Generate Video</h3>
+                    <div class="generate-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="genMode">Mode</label>
+                                <select id="genMode">
+                                    <option value="auto">Auto (Autopilot)</option>
+                                    <option value="quality">Quality</option>
+                                    <option value="fast">Fast</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="genTitleVariant">Title Variant</label>
+                                <select id="genTitleVariant">
+                                    <option value="auto">Auto</option>
+                                    <option value="bold">Bold</option>
+                                    <option value="safe">Safe</option>
+                                    <option value="experimental">Experimental</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group full-width">
+                                <label for="genTopic">Topic Override (optional)</label>
+                                <input type="text" id="genTopic" placeholder="e.g., 'The history of coffee'">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="toggle-label">
+                                    <input type="checkbox" id="genEligible" checked>
+                                    Calibration Eligible
+                                </label>
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button class="btn-primary" onclick="generateVideo()">🚀 Generate Now</button>
+                            <button class="btn-secondary" onclick="generateTestVideo()">🧪 Generate & Mark TEST</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- System Activity Section -->
+            <section id="systemActivity" class="section hidden">
+                <h2>🚀 System Activity</h2>
+                <div class="activity-controls">
+                    <button class="refresh-btn" onclick="loadSystemActivity()">🔄 Refresh</button>
+                    <select id="jobStatusFilter" onchange="loadSystemActivity()">
+                        <option value="">All Status</option>
+                        <option value="queued">Queued</option>
+                        <option value="running">Running</option>
+                        <option value="completed">Completed</option>
+                        <option value="failed">Failed</option>
+                    </select>
+                </div>
+                <div class="jobs-timeline" id="jobsTimeline">
+                    <p class="loading-text">Loading jobs...</p>
                 </div>
             </section>
 
@@ -139,6 +202,32 @@
                     <div id="modalBody"></div>
                 </div>
             </div>
+
+            <!-- Logs Modal -->
+            <div id="logsModal" class="modal hidden">
+                <div class="modal-content wide">
+                    <span class="close" onclick="closeLogsModal()">&times;</span>
+                    <h2 id="logsModalTitle">📋 Job Logs</h2>
+                    <div class="logs-filters">
+                        <select id="logComponentFilter" onchange="filterLogs()">
+                            <option value="">All Components</option>
+                            <option value="video_generator">video_generator</option>
+                            <option value="analytics_fetcher">analytics_fetcher</option>
+                            <option value="decision_engine">decision_engine</option>
+                        </select>
+                        <select id="logLevelFilter" onchange="filterLogs()">
+                            <option value="">All Levels</option>
+                            <option value="INFO">INFO</option>
+                            <option value="WARN">WARN</option>
+                            <option value="ERROR">ERROR</option>
+                        </select>
+                    </div>
+                    <div id="logsContainer" class="logs-container"></div>
+                </div>
+            </div>
+
+            <!-- Toast container -->
+            <div id="toastContainer" class="toast-container"></div>
         </main>
     </div>
 

@@ -9,22 +9,38 @@ Endpoints:
 - PATCH /videos/{id} - Update video fields (with audit log)
 - POST /videos/bulk - Bulk update (max 50)
 - GET /stats - Dashboard statistics
+- POST /generate - Trigger on-demand video generation
+- GET /jobs - List recent generation jobs
+- GET /jobs/{id} - Get job details
+- GET /logs - Get structured run logs for a job
 """
 
 import json
 import os
 import boto3
+import uuid
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Dict, Any, List
 
 # Config
 METRICS_TABLE_NAME = os.environ.get("METRICS_TABLE_NAME", "shorts_video_metrics")
+JOBS_TABLE_NAME = os.environ.get("JOBS_TABLE_NAME", "shorts_jobs")
+RUN_LOGS_TABLE_NAME = os.environ.get("RUN_LOGS_TABLE_NAME", "shorts_run_logs")
+RATE_LIMITS_TABLE_NAME = os.environ.get("RATE_LIMITS_TABLE_NAME", "shorts_rate_limits")
+VIDEO_CREATOR_FUNC_NAME = os.environ.get("VIDEO_CREATOR_FUNC_NAME", "youtube-shorts-video-generator")
+AWS_REGION = os.environ.get("AWS_REGION_NAME", "us-east-1")
 GSI_NAME = "gsi1_publish_time"
 MAX_BULK_ITEMS = 50
+GENERATE_RATE_LIMIT = 2  # Max 2 generates per minute per API key
 
+# AWS Clients
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(METRICS_TABLE_NAME)
+jobs_table = dynamodb.Table(JOBS_TABLE_NAME)
+logs_table = dynamodb.Table(RUN_LOGS_TABLE_NAME)
+rate_table = dynamodb.Table(RATE_LIMITS_TABLE_NAME)
+lambda_client = boto3.client("lambda", region_name=AWS_REGION)
 
 
 def lambda_handler(event, context):
@@ -36,6 +52,9 @@ def lambda_handler(event, context):
     path_params = event.get("pathParameters") or {}
     query_params = event.get("queryStringParameters") or {}
     body = event.get("body")
+    
+    # Extract API key for rate limiting (from header or context)
+    api_key = event.get("requestContext", {}).get("identity", {}).get("apiKey", "unknown")
     
     if body:
         try:
@@ -68,11 +87,27 @@ def lambda_handler(event, context):
             video_id = path_params.get("id") or path.split("/")[-1]
             return delete_video(video_id)
         
+        # === NEW ENDPOINTS ===
+        elif path == "/generate" and http_method == "POST":
+            return generate_video(body, api_key)
+        
+        elif path == "/jobs" and http_method == "GET":
+            return list_jobs(query_params)
+        
+        elif path.startswith("/jobs/") and http_method == "GET":
+            job_id = path_params.get("id") or path.split("/")[-1]
+            return get_job(job_id)
+        
+        elif path == "/logs" and http_method == "GET":
+            return get_logs(query_params)
+        
         else:
             return response(404, {"error": "Not found"})
     
     except Exception as e:
         print(f"[ERROR] {str(e)}")
+        import traceback
+        traceback.print_exc()
         return response(500, {"error": str(e)})
 
 
@@ -472,3 +507,285 @@ def bulk_update(body: Dict) -> Dict:
             results["failed"].append({"video_id": video_id, "error": str(e)})
     
     return response(200, results)
+
+
+# ============================================================================
+# POST /generate - Trigger on-demand video generation
+# ============================================================================
+def check_rate_limit(api_key: str) -> bool:
+    """
+    Check if API key is within rate limit (2 generates per minute).
+    Uses atomic DynamoDB update with condition expression.
+    Returns True if request is allowed, False if rate limited.
+    """
+    # Create minute bucket key
+    minute_bucket = datetime.utcnow().strftime("%Y%m%d%H%M")
+    pk = f"rate#generate#{api_key}#{minute_bucket}"
+    
+    try:
+        # Try atomic increment with condition
+        rate_table.update_item(
+            Key={"pk": pk},
+            UpdateExpression="SET #count = if_not_exists(#count, :zero) + :one, expires_at = :ttl",
+            ConditionExpression="attribute_not_exists(#count) OR #count < :limit",
+            ExpressionAttributeNames={"#count": "count"},
+            ExpressionAttributeValues={
+                ":zero": 0,
+                ":one": 1,
+                ":limit": GENERATE_RATE_LIMIT,
+                ":ttl": int((datetime.utcnow() + timedelta(minutes=2)).timestamp())
+            }
+        )
+        return True
+    except dynamodb.meta.client.exceptions.ConditionalCheckFailedException:
+        return False
+
+
+def check_idempotency(client_request_id: str) -> Dict:
+    """
+    Check if a request with same client_request_id already exists.
+    Returns existing job if found, None otherwise.
+    """
+    if not client_request_id:
+        return None
+    
+    try:
+        # Query jobs table for matching client_request_id
+        result = jobs_table.query(
+            IndexName="by_date",
+            KeyConditionExpression="gsi1pk = :pk",
+            FilterExpression="client_request_id = :crid",
+            ExpressionAttributeValues={
+                ":pk": "JOBS",
+                ":crid": client_request_id
+            },
+            Limit=1
+        )
+        items = result.get("Items", [])
+        if items:
+            return decimal_to_float(items[0])
+    except Exception as e:
+        print(f"[WARN] Idempotency check failed: {e}")
+    
+    return None
+
+
+def generate_video(body: Dict, api_key: str) -> Dict:
+    """
+    Trigger on-demand video generation.
+    
+    Body params:
+    - mode: auto/quality/fast (default: auto)
+    - title_variant: auto/bold/safe/experimental (default: auto)
+    - topic_override: optional custom topic
+    - calibration_eligible: bool (default: true)
+    - mark_as_test: bool (default: false, sets eligible=false + status=test)
+    - client_request_id: optional UUID for idempotency
+    """
+    # Check rate limit
+    if not check_rate_limit(api_key):
+        return response(429, {
+            "error": "Rate limit exceeded",
+            "message": f"Max {GENERATE_RATE_LIMIT} generate requests per minute"
+        })
+    
+    # Check idempotency
+    client_request_id = body.get("client_request_id")
+    existing = check_idempotency(client_request_id)
+    if existing:
+        print(f"[IDEMPOTENCY] Returning existing job for client_request_id={client_request_id}")
+        return response(200, {
+            "job_id": existing["job_id"],
+            "status": existing["status"],
+            "message": "Existing job returned (idempotent)"
+        })
+    
+    # Parse parameters
+    mode = body.get("mode", "auto")
+    title_variant = body.get("title_variant", "auto")
+    topic_override = body.get("topic_override")
+    mark_as_test = body.get("mark_as_test", False)
+    calibration_eligible = False if mark_as_test else body.get("calibration_eligible", True)
+    
+    # Generate job ID
+    job_id = f"job_{uuid.uuid4().hex[:12]}"
+    requested_at = datetime.utcnow().isoformat() + "Z"
+    expires_at = int((datetime.utcnow() + timedelta(days=30)).timestamp())
+    
+    # Create job record
+    job_item = {
+        "job_id": job_id,
+        "gsi1pk": "JOBS",
+        "requested_at_utc": requested_at,
+        "requested_by": "admin",
+        "status": "queued",
+        "params": {
+            "mode": mode,
+            "title_variant": title_variant,
+            "topic_override": topic_override,
+            "calibration_eligible": calibration_eligible,
+            "mark_as_test": mark_as_test
+        },
+        "expires_at": expires_at
+    }
+    
+    if client_request_id:
+        job_item["client_request_id"] = client_request_id
+    
+    jobs_table.put_item(Item=job_item)
+    print(f"[GENERATE] Created job {job_id}")
+    
+    # Prepare Lambda payload
+    lambda_payload = {
+        "job_id": job_id,
+        "mode": mode,
+        "title_variant": title_variant,
+        "calibration_eligible": calibration_eligible,
+        "mark_as_test": mark_as_test
+    }
+    
+    if topic_override:
+        lambda_payload["topic"] = topic_override
+    
+    # Force mode if not auto
+    if mode == "quality":
+        lambda_payload["force_mode"] = "QUALITY"
+    elif mode == "fast":
+        lambda_payload["force_mode"] = "FAST"
+    
+    # Async invoke video creator Lambda
+    try:
+        lambda_client.invoke(
+            FunctionName=VIDEO_CREATOR_FUNC_NAME,
+            InvocationType="Event",  # Async
+            Payload=json.dumps(lambda_payload)
+        )
+        print(f"[GENERATE] Async invoked {VIDEO_CREATOR_FUNC_NAME} for job {job_id}")
+    except Exception as e:
+        # Update job status to failed if invoke fails
+        jobs_table.update_item(
+            Key={"job_id": job_id},
+            UpdateExpression="SET #status = :status, error_message = :err",
+            ExpressionAttributeNames={"#status": "status"},
+            ExpressionAttributeValues={
+                ":status": "failed",
+                ":err": f"Lambda invoke failed: {str(e)}"
+            }
+        )
+        print(f"[ERROR] Failed to invoke Lambda: {e}")
+        return response(500, {"error": "Failed to start video generation", "job_id": job_id})
+    
+    return response(200, {
+        "job_id": job_id,
+        "status": "queued",
+        "message": "Video generation started"
+    })
+
+
+# ============================================================================
+# GET /jobs - List recent generation jobs
+# ============================================================================
+def list_jobs(query_params: Dict) -> Dict:
+    """
+    List recent jobs with optional filters.
+    
+    Query params:
+    - limit: max results (default: 50)
+    - status: filter by status (queued/running/completed/failed)
+    - from_date: ISO date string
+    """
+    limit = int(query_params.get("limit", 50))
+    status_filter = query_params.get("status")
+    from_date = query_params.get("from_date")
+    
+    if not from_date:
+        from_date = (datetime.utcnow() - timedelta(hours=24)).isoformat() + "Z"
+    
+    # Query GSI by date
+    result = jobs_table.query(
+        IndexName="by_date",
+        KeyConditionExpression="gsi1pk = :pk AND requested_at_utc >= :from_date",
+        ExpressionAttributeValues={
+            ":pk": "JOBS",
+            ":from_date": from_date
+        },
+        ScanIndexForward=False,  # Newest first
+        Limit=limit * 2  # Extra for filtering
+    )
+    
+    items = result.get("Items", [])
+    
+    # Apply status filter
+    if status_filter:
+        items = [i for i in items if i.get("status") == status_filter]
+    
+    # Limit results
+    items = items[:limit]
+    
+    return response(200, {
+        "jobs": [decimal_to_float(i) for i in items],
+        "count": len(items)
+    })
+
+
+# ============================================================================
+# GET /jobs/{id} - Get job details
+# ============================================================================
+def get_job(job_id: str) -> Dict:
+    """Get single job by ID."""
+    result = jobs_table.get_item(Key={"job_id": job_id})
+    
+    item = result.get("Item")
+    if not item:
+        return response(404, {"error": "Job not found"})
+    
+    return response(200, decimal_to_float(item))
+
+
+# ============================================================================
+# GET /logs - Get structured run logs
+# ============================================================================
+def get_logs(query_params: Dict) -> Dict:
+    """
+    Get structured run logs for a job.
+    
+    Query params:
+    - job_id: required - the job to get logs for
+    - component: optional filter (video_generator/analytics_fetcher/decision_engine)
+    - level: optional filter (INFO/WARN/ERROR)
+    - limit: max results (default: 100)
+    """
+    job_id = query_params.get("job_id")
+    if not job_id:
+        return response(400, {"error": "job_id is required"})
+    
+    component_filter = query_params.get("component")
+    level_filter = query_params.get("level")
+    limit = int(query_params.get("limit", 100))
+    
+    # Query logs by job_id (pk)
+    result = logs_table.query(
+        KeyConditionExpression="pk = :job_id",
+        ExpressionAttributeValues={
+            ":job_id": job_id
+        },
+        ScanIndexForward=True,  # Oldest first (chronological)
+        Limit=limit * 2  # Extra for filtering
+    )
+    
+    items = result.get("Items", [])
+    
+    # Apply filters
+    if component_filter:
+        items = [i for i in items if i.get("component") == component_filter]
+    if level_filter:
+        items = [i for i in items if i.get("level") == level_filter]
+    
+    # Limit results
+    items = items[:limit]
+    
+    return response(200, {
+        "job_id": job_id,
+        "logs": [decimal_to_float(i) for i in items],
+        "count": len(items)
+    })

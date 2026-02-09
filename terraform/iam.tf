@@ -87,7 +87,12 @@ resource "aws_iam_role_policy" "lambda_policy" {
         ]
         Resource = [
           aws_dynamodb_table.video_metrics.arn,
-          "${aws_dynamodb_table.video_metrics.arn}/index/*"
+          "${aws_dynamodb_table.video_metrics.arn}/index/*",
+          aws_dynamodb_table.run_logs.arn,
+          "${aws_dynamodb_table.run_logs.arn}/index/*",
+          aws_dynamodb_table.jobs.arn,
+          "${aws_dynamodb_table.jobs.arn}/index/*",
+          aws_dynamodb_table.rate_limits.arn
         ]
       },
       {
@@ -96,6 +101,14 @@ resource "aws_iam_role_policy" "lambda_policy" {
           "secretsmanager:GetSecretValue"
         ]
         Resource = "arn:aws:secretsmanager:${var.aws_region}:*:secret:shorts/youtube-oauth*"
+      },
+      {
+        # Allow admin_api Lambda to invoke video_creator Lambda
+        Effect = "Allow"
+        Action = [
+          "lambda:InvokeFunction"
+        ]
+        Resource = "arn:aws:lambda:${var.aws_region}:*:function:youtube-shorts-video-generator"
       }
     ]
   })
