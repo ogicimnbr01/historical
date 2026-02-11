@@ -3,13 +3,13 @@ import json
 import sys
 
 # Fix Windows encoding
-sys.stdout.reconfigure(encoding='utf-8')
+sys.stdout.reconfigure(encoding='utf-8')  # pyre-ignore[16]
 
 # Set environment
 os.environ['S3_BUCKET_NAME'] = 'youtube-shorts-videos-20260119122010783300000001'
 os.environ['PYTHONIOENCODING'] = 'utf-8'
 
-from script_gen import generate_history_script
+from script_gen import generate_history_script  # pyre-ignore[21]
 
 print('='*70)
 print('FULL SCRIPT TEST - Complete Video Text')

@@ -974,6 +974,16 @@ body::after {
     box-shadow: 0 6px 15px var(--warning-glow);
 }
 
+.action-btn.undo {
+    background: linear-gradient(135deg, var(--success) 0%, #34d399 100%);
+    color: white;
+}
+
+.action-btn.undo:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(16, 185, 129, 0.4);
+}
+
 /* ============================================================================
    Modal
    ============================================================================ */
@@ -1542,4 +1552,33 @@ body::after {
 ::selection {
     background: var(--accent-primary);
     color: white;
+}
+
+/* ============================================================================
+   Icon Buttons
+   ============================================================================ */
+.btn-icon {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 1.2rem;
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    transition: var(--transition-fast);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-icon:hover {
+    color: var(--danger);
+    background: rgba(239, 68, 68, 0.1);
+    box-shadow: 0 0 10px var(--danger-glow);
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
 }

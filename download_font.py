@@ -1,4 +1,4 @@
-import requests
+import requests  # pyre-ignore[21]
 import os
 
 # URLs to try (Roboto or DejaVuSans)

@@ -12,10 +12,10 @@ Rules:
 
 import json
 import os
-import boto3
+import boto3  # pyre-ignore[21]
 from datetime import datetime
 from decimal import Decimal
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 
 # Configuration
@@ -34,7 +34,7 @@ MAX_EXAMPLE_LENGTH = 150
 # DYNAMODB OPERATIONS
 # =============================================================================
 
-def get_autopilot_config(region_name: str = None) -> Dict:
+def get_autopilot_config(region_name: Optional[str] = None) -> Dict:
     """Get current autopilot configuration."""
     region = region_name or os.environ.get("AWS_REGION_NAME", "us-east-1")
     dynamodb = boto3.resource("dynamodb", region_name=region)
@@ -48,7 +48,7 @@ def get_autopilot_config(region_name: str = None) -> Dict:
         return {}
 
 
-def save_prompt_memory(do_examples: List[str], dont_examples: List[str], region_name: str = None) -> bool:
+def save_prompt_memory(do_examples: List[str], dont_examples: List[str], region_name: Optional[str] = None) -> bool:
     """Save updated prompt memory to autopilot config."""
     region = region_name or os.environ.get("AWS_REGION_NAME", "us-east-1")
     dynamodb = boto3.resource("dynamodb", region_name=region)
@@ -73,7 +73,7 @@ def save_prompt_memory(do_examples: List[str], dont_examples: List[str], region_
         return False
 
 
-def get_complete_videos(region_name: str = None, limit: int = 100) -> List[Dict]:
+def get_complete_videos(region_name: Optional[str] = None, limit: int = 100) -> List[Dict]:
     """Get all completed, eligible videos sorted by retention."""
     region = region_name or os.environ.get("AWS_REGION_NAME", "us-east-1")
     dynamodb = boto3.resource("dynamodb", region_name=region)
@@ -158,7 +158,7 @@ def extract_example(video: Dict, is_success: bool) -> str:
     
     # Truncate if still too long
     if len(example) > MAX_EXAMPLE_LENGTH:
-        example = example[:MAX_EXAMPLE_LENGTH - 3] + "..."
+        example = example[:MAX_EXAMPLE_LENGTH - 3] + "..."  # pyre-ignore[16]
     
     return example
 
@@ -174,8 +174,8 @@ def generate_prompt_memory(videos: List[Dict]) -> Dict[str, List[str]]:
         return {"do_examples": [], "dont_examples": []}
     
     # Videos are already sorted by retention (high to low)
-    top_videos = videos[:TOP_N]
-    bottom_videos = videos[-BOTTOM_N:] if len(videos) >= BOTTOM_N else videos
+    top_videos = videos[:TOP_N]  # pyre-ignore[16]
+    bottom_videos = videos[-BOTTOM_N:] if len(videos) >= BOTTOM_N else videos  # pyre-ignore[16]
     
     # Extract examples
     do_examples = []
@@ -191,8 +191,8 @@ def generate_prompt_memory(videos: List[Dict]) -> Dict[str, List[str]]:
             dont_examples.append(example)
     
     return {
-        "do_examples": do_examples[:TOP_N],
-        "dont_examples": dont_examples[:BOTTOM_N]
+        "do_examples": do_examples[:TOP_N],  # pyre-ignore[16]
+        "dont_examples": dont_examples[:BOTTOM_N]  # pyre-ignore[16]
     }
 
 
@@ -222,7 +222,7 @@ def format_prompt_injection(do_examples: List[str], dont_examples: List[str]) ->
 # MAIN LOGIC
 # =============================================================================
 
-def update_prompt_memory(region_name: str = None) -> Dict:
+def update_prompt_memory(region_name: Optional[str] = None) -> Dict:
     """
     Main function: Extract and update prompt memory.
     
@@ -261,8 +261,8 @@ def update_prompt_memory(region_name: str = None) -> Dict:
     # Save to DynamoDB
     if save_prompt_memory(do_examples, dont_examples, region):
         result["action"] = "updated"
-        result["do_examples"] = do_examples
-        result["dont_examples"] = dont_examples
+        result["do_examples"] = do_examples  # pyre-ignore[6]
+        result["dont_examples"] = dont_examples  # pyre-ignore[6]
         
         # Send notification
         send_memory_update_notification(do_examples, dont_examples, region)
@@ -272,7 +272,7 @@ def update_prompt_memory(region_name: str = None) -> Dict:
     return result
 
 
-def send_memory_update_notification(do_examples: List[str], dont_examples: List[str], region_name: str = None):
+def send_memory_update_notification(do_examples: List[str], dont_examples: List[str], region_name: Optional[str] = None):
     """Send notification about prompt memory update."""
     if not SNS_TOPIC_ARN:
         return

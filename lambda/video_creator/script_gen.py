@@ -7,10 +7,11 @@ Global audience, English language, fascinating facts about leaders, battles, and
 import json
 import re
 import random
-import boto3
+import boto3  # pyre-ignore[21]: third-party module without configured stubs
+from typing import Optional
 
 # Similarity Dampener for content variety
-from similarity_dampener import generate_similarity_policy, get_prompt_injection, save_video_metadata
+from similarity_dampener import generate_similarity_policy, get_prompt_injection, save_video_metadata  # pyre-ignore[21]: local module
 
 # Era-specific context for visual generation
 ERA_VISUAL_STYLES = {
@@ -249,7 +250,7 @@ Topic: "Atatürk's favorite foods"
 REMEMBER: You're not teaching history class. You're telling a story that makes someone stop scrolling."""
 
 
-def generate_history_script(topic: str = None, era: str = None, region_name: str = None) -> dict:
+def generate_history_script(topic: Optional[str] = None, era: Optional[str] = None, region_name: Optional[str] = None) -> dict:
     """
     Generate a history-themed script for YouTube Shorts using AWS Bedrock Claude
     
@@ -383,7 +384,7 @@ Make it FASCINATING. Make viewers stop scrolling."""
     
     # Add safe title for filename
     safe_title = re.sub(r'[^\w\s-]', '', script['title'])
-    safe_title = re.sub(r'[-\s]+', '_', safe_title).strip('_')[:50]
+    safe_title = re.sub(r'[-\s]+', '_', safe_title).strip('_')[:50]  # pyre-ignore[16]
     script['safe_title'] = safe_title
     
     # Add original topic for reference
@@ -457,7 +458,7 @@ def validate_and_fix_script(script: dict, topic_info: dict) -> dict:
     ]
     
     # ===== CHECK HOOK QUALITY =====
-    hook_score = 0  # Track hook quality
+    hook_score: int = 0  # Track hook quality
     
     if 'segments' in script and len(script['segments']) > 0:
         hook_text = script['segments'][0].get('text', '').lower().strip()
@@ -467,13 +468,13 @@ def validate_and_fix_script(script: dict, topic_info: dict) -> dict:
             if re.match(pattern, hook_text, re.IGNORECASE):
                 print(f"❌ WEAK HOOK DETECTED: '{hook_text[:50]}...'")
                 print(f"   Pattern matched: {pattern}")
-                hook_score -= 2
+                hook_score -= 2  # pyre-ignore[58]
         
         # Check for strong patterns (whitelist) - BONUS
         for pattern in STRONG_PATTERNS:
             if re.search(pattern, hook_text, re.IGNORECASE):
                 print(f"🔥 STRONG HOOK PATTERN: '{pattern}' found!")
-                hook_score += 2
+                hook_score += 2  # pyre-ignore[58]
                 break  # Only count once
         
         # Check hook word count - STRICTER RULES
@@ -487,18 +488,18 @@ def validate_and_fix_script(script: dict, topic_info: dict) -> dict:
         
         if hook_words >= 6 and hook_words <= 9:
             print(f"✅ HOOK GOLDEN ZONE: {hook_words} words (ideal 6-9)")
-            hook_score += 1
+            hook_score += 1  # pyre-ignore[58]
         elif hook_words >= 4 and hook_words <= 5 and has_shock_verb:
             print(f"⚡ HOOK SHORT BUT PUNCHY: {hook_words} words (shock verb detected)")
-            hook_score += 1  # Still good if shock verb present
+            hook_score += 1  # Still good if shock verb present  # pyre-ignore[58]
         elif hook_words >= 4 and hook_words <= 5:
             print(f"⚠️ HOOK TOO SHORT: {hook_words} words (min 6, or needs shock verb)")
-            hook_score -= 1  # Penalize short hooks without shock verb
+            hook_score -= 1  # Penalize short hooks without shock verb  # pyre-ignore[58]
         elif hook_words <= 12:
             print(f"✅ HOOK OK: {hook_words} words")
         else:
             print(f"⚠️ HOOK TOO LONG: {hook_words} words (max 12)")
-            hook_score -= 1
+            hook_score -= 1  # pyre-ignore[58]
         
         # Log final hook score
         if hook_score >= 2:
@@ -555,8 +556,8 @@ def validate_and_fix_script(script: dict, topic_info: dict) -> dict:
         
         for i, (expected_start, expected_end) in enumerate(expected_timings):
             if i < len(script['segments']):
-                script['segments'][i]['start'] = round(expected_start, 1)
-                script['segments'][i]['end'] = round(expected_end, 1)
+                script['segments'][i]['start'] = round(float(expected_start), 1)  # pyre-ignore[6]
+                script['segments'][i]['end'] = round(float(expected_end), 1)  # pyre-ignore[6]
     
     # ===== FLEXIBLE WORD COUNT (DENSITY CHECK) =====
     if 'voiceover_text' in script:
@@ -587,15 +588,15 @@ def validate_and_fix_script(script: dict, topic_info: dict) -> dict:
 
 
 # Backward compatible aliases
-def generate_calm_script(region_name: str = None) -> dict:
+def generate_calm_script(region_name: Optional[str] = None) -> dict:
     """Backward compatible alias - now generates history content"""
     return generate_history_script(region_name=region_name)
 
-def generate_fitness_script(region_name: str = None) -> dict:
+def generate_fitness_script(region_name: Optional[str] = None) -> dict:
     """Backward compatible alias - now generates history content"""
     return generate_history_script(region_name=region_name)
 
-def generate_absurd_script(region_name: str = None) -> dict:
+def generate_absurd_script(region_name: Optional[str] = None) -> dict:
     """Backward compatible alias - now generates history content"""
     return generate_history_script(region_name=region_name)
 

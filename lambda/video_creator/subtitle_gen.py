@@ -73,7 +73,7 @@ def create_subtitle_file(
     Returns:
         Path to the created ASS subtitle file
     """
-    unique_id = uuid.uuid4().hex[:8]
+    unique_id = uuid.uuid4().hex[:8]  # pyre-ignore[16]
     subtitle_path = os.path.join(tempfile.gettempdir(), f"subtitles_{unique_id}.ass")
     
     events = []
@@ -219,12 +219,12 @@ def create_simple_subtitle(text: str, duration: float) -> str:
     Create a simple single-line subtitle file
     For when you just need basic text overlay
     """
-    unique_id = uuid.uuid4().hex[:8]
+    unique_id = uuid.uuid4().hex[:8]  # pyre-ignore[16]
     subtitle_path = os.path.join(tempfile.gettempdir(), f"simple_sub_{unique_id}.ass")
     
-    safe_text = escape_ass_text(text[:80])  # Limit length
+    safe_text = escape_ass_text(text[:80])  # Limit length  # pyre-ignore[16]
     
-    content = CALM_STYLE + f"Dialogue: 0,{format_ass_time(0)},{format_ass_time(duration)},Default,,0,0,0,,{{\\fad(500,500)}}{safe_text}\n"
+    content = HISTORY_STYLE + f"Dialogue: 0,{format_ass_time(0)},{format_ass_time(duration)},Default,,0,0,0,,{{\\fad(500,500)}}{safe_text}\n"
     
     with open(subtitle_path, 'w', encoding='utf-8') as f:
         f.write(content)

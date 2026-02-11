@@ -7,7 +7,7 @@ Music files are pre-uploaded to S3 bucket (Pixabay AI music)
 import os
 import subprocess
 import tempfile
-import boto3
+import boto3  # pyre-ignore[21]
 import random
 from typing import Optional, Dict, List
 
@@ -57,38 +57,50 @@ def list_available_music(bucket: str, region: str = "us-east-1") -> Dict[str, Li
     music_by_category = {}
     
     try:
-        response = s3.list_objects_v2(
-            Bucket=bucket,
-            Prefix=MUSIC_BUCKET_PREFIX
-        )
-        
-        for obj in response.get('Contents', []):
-            key = obj['Key']
-            filename = os.path.basename(key)
-            
-            # Skip if not a music file
-            if not filename.lower().endswith(('.mp3', '.m4a', '.wav', '.aac')):
-                continue
-            
-            # Extract category from filename (e.g., "epic_1.mp3" -> "epic")
-            raw_category = filename.split('_')[0].lower()
-            
-            # Normalize category names to match our internal categories
-            category_mapping = {
-                "emotional-piano": "emotional",
-                "cinematic": "epic",  # Map cinematic to epic
-                "oriental": "oriental",
-                "medieval": "medieval",
-                "documentary": "documentary",
+        continuation_token = None
+        while True:
+            list_kwargs = {
+                "Bucket": bucket,
+                "Prefix": MUSIC_BUCKET_PREFIX,
             }
-            category = category_mapping.get(raw_category, raw_category)
+            if continuation_token:
+                list_kwargs["ContinuationToken"] = continuation_token  # pyre-ignore[26]
             
-            if category not in music_by_category:
-                music_by_category[category] = []
-            music_by_category[category].append(key)
+            response = s3.list_objects_v2(**list_kwargs)
+            
+            for obj in response.get('Contents', []):
+                key = obj['Key']
+                filename = os.path.basename(key)
+                
+                # Skip if not a music file
+                if not filename.lower().endswith(('.mp3', '.m4a', '.wav', '.aac')):
+                    continue
+                
+                # Extract category from filename (e.g., "epic_1.mp3" -> "epic")
+                raw_category = filename.split('_')[0].lower()
+                
+                # Normalize category names to match our internal categories
+                category_mapping = {
+                    "emotional-piano": "emotional",
+                    "cinematic": "epic",  # Map cinematic to epic
+                    "oriental": "oriental",
+                    "medieval": "medieval",
+                    "documentary": "documentary",
+                }
+                category = category_mapping.get(raw_category, raw_category)
+                
+                if category not in music_by_category:
+                    music_by_category[category] = []
+                music_by_category[category].append(key)  # pyre-ignore[16]
+            
+            # Check if there are more pages
+            if response.get('IsTruncated'):
+                continuation_token = response.get('NextContinuationToken')
+            else:
+                break
         
         print(f"🎵 Found music categories: {list(music_by_category.keys())}")
-        return music_by_category
+        return music_by_category  # pyre-ignore[7]
         
     except Exception as e:
         print(f"⚠️ Could not list music from S3: {e}")
@@ -112,8 +124,8 @@ def download_music(bucket: str, s3_key: str, region: str = "us-east-1") -> Optio
 
 
 def select_music_for_mood(music_by_category: Dict[str, List[str]], 
-                          mood: str = None, era: str = None,
-                          direct_category: str = None) -> Optional[str]:
+                          mood: Optional[str] = None, era: Optional[str] = None,
+                          direct_category: Optional[str] = None) -> Optional[str]:
     """
     Select appropriate music based on mood/era or direct category
     Returns S3 key of selected music
@@ -163,7 +175,7 @@ def select_music_for_mood(music_by_category: Dict[str, List[str]],
 def smart_cut_music(input_path: str, target_duration: float) -> Optional[str]:
     """Apply smart cutting to music file"""
     try:
-        from smart_music_cutter import smart_cut_music as do_smart_cut
+        from smart_music_cutter import smart_cut_music as do_smart_cut  # pyre-ignore[21]
         return do_smart_cut(input_path, target_duration)
     except ImportError:
         # Fallback: simple cut if smart_music_cutter not available
@@ -185,7 +197,7 @@ def simple_cut_music(input_path: str, target_duration: float) -> Optional[str]:
         total_duration = float(result.stdout.strip()) if result.returncode == 0 else 60.0
         
         # Choose random start (skip first 10 seconds)
-        max_start = max(0, total_duration - target_duration - 5)
+        max_start = max(0, total_duration - target_duration - 5)  # pyre-ignore[6]
         start = random.uniform(10.0, min(30.0, max_start)) if max_start > 10 else 0
         
         # Cut with fade
@@ -215,9 +227,9 @@ def simple_cut_music(input_path: str, target_duration: float) -> Optional[str]:
         return None
 
 
-def generate_historical_music(duration: float = 30.0, music_style: str = None,
-                             mood: str = None, era: str = None,
-                             region_name: str = None) -> Optional[Dict]:
+def generate_historical_music(duration: float = 30.0, music_style: Optional[str] = None,
+                             mood: Optional[str] = None, era: Optional[str] = None,
+                             region_name: Optional[str] = None) -> Optional[Dict]:
     """
     Main function: Get royalty-free music from S3 and apply smart cutting
     
@@ -231,7 +243,7 @@ def generate_historical_music(duration: float = 30.0, music_style: str = None,
     Returns:
         Dict with 'path' to cut music file and 'metadata'
     """
-    from copyright_safety import get_copyright_tracker
+    from copyright_safety import get_copyright_tracker  # pyre-ignore[21]
     
     # Get bucket name from environment
     bucket = os.environ.get('S3_BUCKET_NAME', '')
@@ -303,10 +315,10 @@ def generate_historical_music(duration: float = 30.0, music_style: str = None,
 
 def generate_synthesis_fallback(duration: float) -> Optional[Dict]:
     """Fallback: Generate simple synthetic music if S3 music not available"""
-    from copyright_safety import get_copyright_tracker
+    from copyright_safety import get_copyright_tracker  # pyre-ignore[21]
     import uuid
     
-    unique_id = uuid.uuid4().hex[:8]
+    unique_id = uuid.uuid4().hex[:8]  # pyre-ignore[16]
     output_path = os.path.join(tempfile.gettempdir(), f"synth_music_{unique_id}.m4a")
     
     try:
@@ -362,7 +374,7 @@ def generate_synthesis_fallback(duration: float) -> Optional[Dict]:
 def generate_ambient_music(duration: float = 30.0) -> Optional[Dict]:
     return generate_historical_music(duration=duration, mood="documentary")
 
-def fetch_background_music(mood: str = "calm", duration_hint: float = 30.0, api_key: str = None) -> Optional[Dict]:
+def fetch_background_music(mood: str = "calm", duration_hint: float = 30.0, api_key: Optional[str] = None) -> Optional[Dict]:
     return generate_historical_music(duration=duration_hint, mood=mood)
 
 

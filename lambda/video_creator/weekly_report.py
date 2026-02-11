@@ -14,10 +14,10 @@ Report includes:
 
 import json
 import os
-import boto3
+import boto3  # pyre-ignore[21]: third-party module without configured stubs
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 
 # Configuration
@@ -42,7 +42,7 @@ def lambda_handler(event, context):
         return {"statusCode": 500, "body": str(e)}
 
 
-def generate_weekly_report(region_name: str = None) -> Dict:
+def generate_weekly_report(region_name: Optional[str] = None) -> Dict:
     """
     Generate weekly performance report from DynamoDB data.
     """
@@ -114,21 +114,21 @@ def generate_weekly_report(region_name: str = None) -> Dict:
         return {"n": 0, "message": "Could not parse video data"}
     
     # Calculate averages
-    avg_predicted = sum(d["predicted"] for d in data) / len(data)
-    avg_actual = sum(d["actual"] for d in data) / len(data)
-    mae = sum(d["error"] for d in data) / len(data)
+    avg_predicted = float(sum(d["predicted"] for d in data)) / len(data)
+    avg_actual = float(sum(d["actual"] for d in data)) / len(data)
+    mae = float(sum(d["error"] for d in data)) / len(data)
     
     # Sort by actual retention
     sorted_by_actual = sorted(data, key=lambda x: x["actual"], reverse=True)
-    top_3 = sorted_by_actual[:3]
-    bottom_3 = sorted_by_actual[-3:] if len(sorted_by_actual) >= 3 else sorted_by_actual
+    top_3 = list(sorted_by_actual[:3])  # pyre-ignore[16]
+    bottom_3 = list(sorted_by_actual[-3:]) if len(sorted_by_actual) >= 3 else list(sorted_by_actual)  # pyre-ignore[16]
     
     # Mode comparison
-    quality_videos = [d for d in data if d["mode"] == "QUALITY"]
-    fast_videos = [d for d in data if d["mode"] == "FAST"]
+    quality_videos = [d for d in data if str(d["mode"]).lower() == "quality"]
+    fast_videos = [d for d in data if str(d["mode"]).lower() == "fast"]
     
-    quality_avg = sum(d["actual"] for d in quality_videos) / len(quality_videos) if quality_videos else 0
-    fast_avg = sum(d["actual"] for d in fast_videos) / len(fast_videos) if fast_videos else 0
+    quality_avg = float(sum(d["actual"] for d in quality_videos)) / len(quality_videos) if quality_videos else 0
+    fast_avg = float(sum(d["actual"] for d in fast_videos)) / len(fast_videos) if fast_videos else 0
     
     # Entity/Era distribution
     entity_performance = {}
@@ -147,8 +147,8 @@ def generate_weekly_report(region_name: str = None) -> Dict:
         era_performance[era].append(d["actual"])
     
     # Average by entity/era
-    entity_avg = {k: sum(v)/len(v) for k, v in entity_performance.items()}
-    era_avg = {k: sum(v)/len(v) for k, v in era_performance.items()}
+    entity_avg = {k: float(sum(v))/len(v) for k, v in entity_performance.items()}
+    era_avg = {k: float(sum(v))/len(v) for k, v in era_performance.items()}
     
     # Top/bottom entities
     sorted_entities = sorted(entity_avg.items(), key=lambda x: x[1], reverse=True)
@@ -157,25 +157,25 @@ def generate_weekly_report(region_name: str = None) -> Dict:
     report = {
         "period": f"{week_ago.strftime('%Y-%m-%d')} to {now.strftime('%Y-%m-%d')}",
         "n": n,
-        "avg_predicted": round(avg_predicted, 1),
-        "avg_actual": round(avg_actual, 1),
-        "mae": round(mae, 1),
+        "avg_predicted": round(float(avg_predicted), 1),  # pyre-ignore[6]
+        "avg_actual": round(float(avg_actual), 1),  # pyre-ignore[6]
+        "mae": round(float(mae), 1),  # pyre-ignore[6]
         "top_3": top_3,
         "bottom_3": bottom_3,
         "mode_comparison": {
-            "QUALITY": {"n": len(quality_videos), "avg_actual": round(quality_avg, 1)},
-            "FAST": {"n": len(fast_videos), "avg_actual": round(fast_avg, 1)}
+            "QUALITY": {"n": len(quality_videos), "avg_actual": round(float(quality_avg), 1)},  # pyre-ignore[6]
+            "FAST": {"n": len(fast_videos), "avg_actual": round(float(fast_avg), 1)}  # pyre-ignore[6]
         },
-        "top_entities": sorted_entities[:3],
-        "bottom_entities": sorted_entities[-3:] if len(sorted_entities) >= 3 else [],
-        "top_eras": sorted_eras[:3],
-        "bottom_eras": sorted_eras[-3:] if len(sorted_eras) >= 3 else []
+        "top_entities": list(sorted_entities[:3]),  # pyre-ignore[16]
+        "bottom_entities": list(sorted_entities[-3:]) if len(sorted_entities) >= 3 else [],  # pyre-ignore[16]
+        "top_eras": list(sorted_eras[:3]),  # pyre-ignore[16]
+        "bottom_eras": list(sorted_eras[-3:]) if len(sorted_eras) >= 3 else []  # pyre-ignore[16]
     }
     
     return report
 
 
-def send_report_notification(report: Dict, region_name: str = None):
+def send_report_notification(report: Dict, region_name: Optional[str] = None):
     """
     Send weekly report via SNS.
     """

@@ -17,9 +17,9 @@ Endpoints:
 
 import json
 import os
-import boto3
+import boto3  # pyre-ignore[21]
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Dict, Any, List
 
@@ -98,6 +98,10 @@ def lambda_handler(event, context):
             job_id = path_params.get("id") or path.split("/")[-1]
             return get_job(job_id)
         
+        elif path.startswith("/jobs/") and http_method == "DELETE":
+            job_id = path_params.get("id") or path.split("/")[-1]
+            return delete_job(job_id)
+        
         elif path == "/logs" and http_method == "GET":
             return get_logs(query_params)
         
@@ -119,7 +123,7 @@ def response(status_code: int, body: Dict) -> Dict:
             "Content-Type": "application/json",
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Headers": "Content-Type,X-Api-Key,Authorization",
-            "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS"
+            "Access-Control-Allow-Methods": "GET,POST,PATCH,DELETE,OPTIONS"
         },
         "body": json.dumps(body, default=str)
     }
@@ -202,9 +206,9 @@ def get_stats() -> Dict:
         "failed": failed,
         "test": test,
         "fallback_count": fallback_count,
-        "eligible_rate": round(eligible / total * 100, 1) if total > 0 else 0,
-        "mae": round(mae, 2) if mae else None,
-        "correlation": round(correlation, 3) if correlation else None,
+        "eligible_rate": round(eligible / total * 100, 1) if total > 0 else 0,  # pyre-ignore[6]
+        "mae": round(mae, 2) if mae else None,  # pyre-ignore[6]
+        "correlation": round(correlation, 3) if correlation else None,  # pyre-ignore[6]
         "sample_size_for_metrics": len(eligible_complete)
     }
     
@@ -307,7 +311,7 @@ def get_video(video_id: str) -> Dict:
 # PATCH /videos/{id} - Update video with audit log
 # ============================================================================
 
-def parse_youtube_url(url_or_id: str) -> str:
+def parse_youtube_url(url_or_id: str) -> str:  # pyre-ignore[3]
     """
     Extract YouTube video ID from URL or return the ID if already an ID.
     
@@ -320,7 +324,7 @@ def parse_youtube_url(url_or_id: str) -> str:
     import re
     
     if not url_or_id:
-        return None
+        return None  # pyre-ignore[7]
     
     url_or_id = url_or_id.strip()
     
@@ -343,7 +347,7 @@ def parse_youtube_url(url_or_id: str) -> str:
     if match:
         return match.group(1)
     
-    return None
+    return None  # pyre-ignore[7]
 
 
 def update_video(video_id: str, updates: Dict) -> Dict:
@@ -367,9 +371,10 @@ def update_video(video_id: str, updates: Dict) -> Dict:
         if parsed_id:
             updates["youtube_video_id"] = parsed_id
             updates["youtube_url"] = f"https://www.youtube.com/shorts/{parsed_id}"
-            # Auto-update status to linked if currently pending
+            # Auto-update status to linked if currently pending/test/failed
             if updates.get("status") is None:
                 updates["status"] = "linked"
+                updates["_auto_linked"] = True  # Flag: status was auto-set, not explicit
         else:
             return response(400, {"error": "Invalid YouTube URL or video ID"})
     
@@ -384,11 +389,28 @@ def update_video(video_id: str, updates: Dict) -> Dict:
     if not current:
         return response(404, {"error": "Video not found"})
     
-    # If status update to "linked" was auto-set, only apply if current status is pending
+    # If status was AUTO-SET to "linked" (from YouTube URL linking), only apply
+    # if current status allows it (pending, test, failed). If user explicitly
+    # chose "linked" via saveVideoChanges(), always respect their choice.
     if "status" in safe_updates and safe_updates["status"] == "linked":
-        if current.get("status") not in ("pending", None, ""):
-            # Keep existing status if not pending
-            del safe_updates["status"]
+        is_auto_linked = updates.get("_auto_linked", False)
+        if is_auto_linked:
+            # Auto-linked: allow from pending, test, and failed
+            if current.get("status") not in ("pending", "test", "failed", None, ""):
+                del safe_updates["status"]  # pyre-ignore[16]
+        # else: user explicitly set status to "linked" — always allow
+    
+    # Remove internal flag before processing
+    safe_updates.pop("_auto_linked", None)
+    
+    # When transitioning TO linked or pending, clean up test-mode fields
+    if safe_updates.get("status") in ("linked", "pending"):
+        # Restore calibration eligibility unless explicitly set
+        if "calibration_eligible" not in safe_updates:
+            safe_updates["calibration_eligible"] = True
+        # Clear invalid_reason unless explicitly set
+        if "invalid_reason" not in safe_updates:
+            safe_updates["invalid_reason"] = None
     
     # Build update expression
     update_expr = "SET "
@@ -502,9 +524,9 @@ def bulk_update(body: Dict) -> Dict:
             if result["statusCode"] == 200:
                 results["success"].append(video_id)
             else:
-                results["failed"].append({"video_id": video_id, "error": "Update failed"})
+                results["failed"].append({"video_id": video_id, "error": "Update failed"})  # pyre-ignore[6]
         except Exception as e:
-            results["failed"].append({"video_id": video_id, "error": str(e)})
+            results["failed"].append({"video_id": video_id, "error": str(e)})  # pyre-ignore[6]
     
     return response(200, results)
 
@@ -519,7 +541,7 @@ def check_rate_limit(api_key: str) -> bool:
     Returns True if request is allowed, False if rate limited.
     """
     # Create minute bucket key
-    minute_bucket = datetime.utcnow().strftime("%Y%m%d%H%M")
+    minute_bucket = datetime.now(timezone.utc).strftime("%Y%m%d%H%M")
     pk = f"rate#generate#{api_key}#{minute_bucket}"
     
     try:
@@ -533,7 +555,7 @@ def check_rate_limit(api_key: str) -> bool:
                 ":zero": 0,
                 ":one": 1,
                 ":limit": GENERATE_RATE_LIMIT,
-                ":ttl": int((datetime.utcnow() + timedelta(minutes=2)).timestamp())
+                ":ttl": int((datetime.now(timezone.utc) + timedelta(minutes=2)).timestamp())
             }
         )
         return True
@@ -541,13 +563,13 @@ def check_rate_limit(api_key: str) -> bool:
         return False
 
 
-def check_idempotency(client_request_id: str) -> Dict:
+def check_idempotency(client_request_id: str):  # pyre-ignore[3]
     """
     Check if a request with same client_request_id already exists.
     Returns existing job if found, None otherwise.
     """
     if not client_request_id:
-        return None
+        return None  # pyre-ignore[7]
     
     try:
         # Query jobs table for matching client_request_id
@@ -567,7 +589,7 @@ def check_idempotency(client_request_id: str) -> Dict:
     except Exception as e:
         print(f"[WARN] Idempotency check failed: {e}")
     
-    return None
+    return None  # pyre-ignore[7]
 
 
 def generate_video(body: Dict, api_key: str) -> Dict:
@@ -591,7 +613,7 @@ def generate_video(body: Dict, api_key: str) -> Dict:
     
     # Check idempotency
     client_request_id = body.get("client_request_id")
-    existing = check_idempotency(client_request_id)
+    existing = check_idempotency(client_request_id)  # pyre-ignore[6]
     if existing:
         print(f"[IDEMPOTENCY] Returning existing job for client_request_id={client_request_id}")
         return response(200, {
@@ -608,9 +630,9 @@ def generate_video(body: Dict, api_key: str) -> Dict:
     calibration_eligible = False if mark_as_test else body.get("calibration_eligible", True)
     
     # Generate job ID
-    job_id = f"job_{uuid.uuid4().hex[:12]}"
-    requested_at = datetime.utcnow().isoformat() + "Z"
-    expires_at = int((datetime.utcnow() + timedelta(days=30)).timestamp())
+    job_id = f"job_{uuid.uuid4().hex[:12]}"  # pyre-ignore[16]
+    requested_at = datetime.now(timezone.utc).isoformat()
+    expires_at = int((datetime.now(timezone.utc) + timedelta(days=30)).timestamp())
     
     # Create job record
     job_item = {
@@ -699,7 +721,7 @@ def list_jobs(query_params: Dict) -> Dict:
     from_date = query_params.get("from_date")
     
     if not from_date:
-        from_date = (datetime.utcnow() - timedelta(hours=24)).isoformat() + "Z"
+        from_date = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
     
     # Query GSI by date
     result = jobs_table.query(
@@ -720,7 +742,7 @@ def list_jobs(query_params: Dict) -> Dict:
         items = [i for i in items if i.get("status") == status_filter]
     
     # Limit results
-    items = items[:limit]
+    items = items[:limit]  # pyre-ignore[16]
     
     return response(200, {
         "jobs": [decimal_to_float(i) for i in items],
@@ -782,10 +804,42 @@ def get_logs(query_params: Dict) -> Dict:
         items = [i for i in items if i.get("level") == level_filter]
     
     # Limit results
-    items = items[:limit]
+    items = items[:limit]  # pyre-ignore[16]
     
     return response(200, {
         "job_id": job_id,
         "logs": [decimal_to_float(i) for i in items],
         "count": len(items)
     })
+
+
+# ============================================================================
+# DELETE /jobs/{id} - Delete job and its logs
+# ============================================================================
+def delete_job(job_id: str) -> Dict:
+    """Delete a job and all its associated logs."""
+    try:
+        # 1. Delete job record
+        jobs_table.delete_item(Key={"job_id": job_id})
+        
+        # 2. Delete associated logs (Batch delete)
+        # Query all logs for this job
+        logs = logs_table.query(
+            KeyConditionExpression="pk = :job_id",
+            ExpressionAttributeValues={":job_id": job_id}
+        )
+        
+        items = logs.get("Items", [])
+        if items:
+            with logs_table.batch_writer() as batch:
+                for item in items:
+                    batch.delete_item(Key={
+                        "pk": item["pk"],
+                        "sk": item["sk"]
+                    })
+        
+        return response(200, {"message": "Job deleted", "logs_deleted": len(items)})
+        
+    except Exception as e:
+        print(f"[ERROR] Failed to delete job {job_id}: {str(e)}")
+        return response(500, {"error": str(e)})

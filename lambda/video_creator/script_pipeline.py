@@ -19,11 +19,25 @@ import re
 import random
 import time
 import os
-import boto3
-from typing import Optional, Dict, List, Tuple
+import boto3  # pyre-ignore[21]
+from typing import Optional, Dict, List, Tuple, Any, Type, Callable
+try:
+    import json_repair  # pyre-ignore[21]
+except ImportError:
+    json_repair = None
+
+try:
+    from pydantic import ValidationError, BaseModel  # pyre-ignore[21]
+    import models  # pyre-ignore[21]
+except ImportError:
+    ValidationError = None
+    BaseModel = None
+    models = None
 
 # Import from existing modules for compatibility
-from similarity_dampener import generate_similarity_policy, get_prompt_injection, save_video_metadata
+from similarity_dampener import generate_similarity_policy, get_prompt_injection, save_video_metadata  # pyre-ignore[21]
+from utils.researcher import get_wiki_summary  # pyre-ignore[21]
+from utils.editorial import find_viral_angle, normalize_era as refine_era_from_text  # pyre-ignore[21]
 
 # ============================================================================
 # CONFIGURATION
@@ -75,19 +89,19 @@ def format_prompt_memory() -> str:
     
     if do_examples:
         sections.append("✅ DO (high retention):")
-        for ex in do_examples[:5]:
+        for ex in do_examples[:5]:  # pyre-ignore[16]
             sections.append(f"- {ex}")
     
     if dont_examples:
         sections.append("❌ DON'T (low retention):")
-        for ex in dont_examples[:5]:
+        for ex in dont_examples[:5]:  # pyre-ignore[16]
             sections.append(f"- {ex}")
     
     return "\n".join(sections)
 JITTER_MAX = 0.3              # Max random jitter (0-30% of backoff)
 
 # Cost control limits
-MAX_API_CALLS_PER_VIDEO = 18  # Hard limit - abort after this
+MAX_API_CALLS_PER_VIDEO = 30  # Increased from 18 to 30 for quality scripts
 MAX_REPAIR_ATTEMPTS = 1       # JSON repair limit per call
 
 # Tie-breaker settings (when scores are close)
@@ -115,7 +129,7 @@ QUALITY_MODE_CONFIG = {
     "final_threshold": 8.5,
     "hook_max_iterations": 3,    # Reduced from 5 - reroll topic if stuck
     "section_max_iterations": 2,  # Reduced from 3
-    "max_api_calls": 18
+    "max_api_calls": 30
 }
 
 # Active mode config (set per run)
@@ -134,7 +148,7 @@ def set_pipeline_mode(mode: str = "quality"):
 
 def get_threshold(key: str) -> float:
     """Get current threshold value based on active mode."""
-    return _active_config.get(key, QUALITY_MODE_CONFIG.get(key))
+    return _active_config.get(key, QUALITY_MODE_CONFIG.get(key))  # pyre-ignore[7]
 
 # ============================================================================
 # ERA STANDARDIZATION (prevents label drift)
@@ -187,7 +201,7 @@ def normalize_era(era: str) -> str:
 DIVERSITY_GATE_THRESHOLD = 0.65   # Reject topic if similarity >= this
 ENTITY_COOLDOWN_COUNT = 30        # Same entity blocked for N videos
 
-def check_diversity_gate(topic: str, topic_entity: str, region_name: str = None) -> dict:
+def check_diversity_gate(topic: str, topic_entity: str, region_name: Optional[str] = None) -> dict:
     """
     Check if topic passes diversity gate.
     
@@ -195,7 +209,7 @@ def check_diversity_gate(topic: str, topic_entity: str, region_name: str = None)
         dict with 'allowed', 'similarity', 'reason'
     """
     try:
-        from similarity_dampener import get_recent_videos, calculate_similarity
+        from similarity_dampener import get_recent_videos, calculate_similarity  # pyre-ignore[21]
         
         recent = get_recent_videos(count=ENTITY_COOLDOWN_COUNT, region_name=region_name)
         
@@ -233,7 +247,7 @@ def check_diversity_gate(topic: str, topic_entity: str, region_name: str = None)
     except Exception as e:
         # Don't block on errors, just warn
         print(f"⚠️ Diversity gate check failed: {e}")
-        return {"allowed": True, "similarity": 0.0, "reason": f"error:{str(e)[:30]}"}
+        return {"allowed": True, "similarity": 0.0, "reason": f"error:{str(e)[:30]}"}  # pyre-ignore[16]
 
 # ============================================================================
 # HOOK KPI PROXY METRICS
@@ -276,7 +290,7 @@ def evaluate_hook_kpi(client, hook: str) -> dict:
     prompt = HOOK_KPI_EVALUATOR_PROMPT.format(hook=hook)
     
     response = invoke_bedrock(client, prompt, temperature=0.1, max_tokens=150)
-    result = parse_json_safe(response, client, prompt)
+    result = parse_json_safe(response, client, prompt, validation_model=models.HookKPI if models else None)
     
     if result:
         return {
@@ -321,7 +335,7 @@ def evaluate_visual_relevance(client, hook: str, visual_prompt: str) -> dict:
     prompt = VISUAL_RELEVANCE_PROMPT.format(hook=hook, visual_prompt=visual_prompt)
     
     response = invoke_bedrock(client, prompt, temperature=0.1, max_tokens=150)
-    result = parse_json_safe(response, client, prompt)
+    result = parse_json_safe(response, client, prompt, validation_model=models.VisualRelevance if models else None)
     
     if result:
         return {
@@ -359,13 +373,13 @@ def generate_title_variants(client, hook: str, topic: str) -> list:
     prompt = TITLE_GENERATOR_PROMPT.format(hook=hook, topic=topic)
     
     response = invoke_bedrock(client, prompt, temperature=0.7, max_tokens=200)
-    result = parse_json_safe(response, client, prompt)
+    result = parse_json_safe(response, client, prompt, validation_model=models.TitleBatch if models else None)
     
     if result and "titles" in result:
         return result["titles"][:3]
     
     # Fallback: use topic as title
-    return [topic[:60], topic[:60], topic[:60]]
+    return [topic[:60], topic[:60], topic[:60]]  # pyre-ignore[16]
 
 # ============================================================================
 # ANCHOR EXAMPLES FOR SCORE CALIBRATION
@@ -408,12 +422,17 @@ HOOK_GENERATOR_PROMPT = """You are a viral YouTube Shorts hook writer. Generate 
 TOPIC: {topic}
 ERA: {era}
 
+{context_block}
+
+{angle_block}
+
 RULES:
 - Each hook: 6-12 words
 - Must create "Wait, WHAT?!" reaction
 - Use: contradiction, shock, accusation, or paradox
 - NO: "Did you know", "In [year]", "Have you ever wondered"
 - Make them AGGRESSIVE scroll-stoppers
+- IF SOURCE TEXT PROVIDED: Use ONLY facts from Source Text.
 
 Return ONLY valid JSON:
 {{"hooks": ["hook1", "hook2", "hook3"]}}"""
@@ -453,6 +472,8 @@ TOPIC: {topic}
 ERA: {era}
 
 SECTION TYPE: {section_type}
+{context_block}
+{angle_block}
 {section_rules}
 
 Return ONLY valid JSON:
@@ -530,7 +551,7 @@ OUTRO RULES (1-2 sentences):
 # BEDROCK CLIENT HELPERS
 # ============================================================================
 
-def get_bedrock_client(region_name: str = None):
+def get_bedrock_client(region_name: Optional[str] = None):
     """Initialize Bedrock client with region."""
     region = region_name or os.environ.get('AWS_REGION_NAME', 'us-east-1')
     return boto3.client('bedrock-runtime', region_name=region)
@@ -559,13 +580,13 @@ def get_metrics() -> dict:
     """Get current metrics with latency."""
     m = _metrics.copy()
     if "start_time" in m:
-        m["latency_ms"] = int((time.time() - m["start_time"]) * 1000)
-        del m["start_time"]
+        m["latency_ms"] = int((time.time() - m["start_time"]) * 1000)  # pyre-ignore[58]
+        del m["start_time"]  # pyre-ignore[55]
     return m
 
 def check_api_limit():
     """Check if we've exceeded max API calls. Raises exception if so."""
-    if _metrics["api_calls"] >= MAX_API_CALLS_PER_VIDEO:
+    if _metrics["api_calls"] >= MAX_API_CALLS_PER_VIDEO:  # pyre-ignore[58]
         _metrics["warnings"].append("MAX_API_CALLS_EXCEEDED")
         raise Exception(f"Exceeded max API calls limit ({MAX_API_CALLS_PER_VIDEO})")
 
@@ -575,7 +596,7 @@ def invoke_bedrock(
     prompt: str,
     temperature: float = 0.7,
     max_tokens: int = 500,
-    system_prompt: str = None
+    system_prompt: Optional[str] = None
 ) -> str:
     """
     Invoke Bedrock Claude with exponential backoff + jitter for throttling.
@@ -612,7 +633,7 @@ def invoke_bedrock(
                 accept="application/json"
             )
             
-            _metrics["api_calls"] += 1
+            _metrics["api_calls"] += 1  # pyre-ignore[58]
             response_body = json.loads(response['body'].read())
             return response_body['content'][0]['text']
             
@@ -639,12 +660,19 @@ def invoke_bedrock(
     raise Exception("Max retries exceeded")
 
 
-def parse_json_safe(text: str, client=None, original_prompt: str = None) -> dict:
+def parse_json_safe(text: str, client=None, original_prompt: Optional[str] = None, validation_model=None, logger_callback=None) -> Any:
     """
-    Parse JSON from Claude response with fail-safe repair.
+    Parse JSON from Claude response with fail-safe repair and Optional Pydantic validation.
     
-    If parsing fails, attempts ONE JSON repair (max) or returns None.
-    Tracks repair attempts in metrics.
+    Args:
+        text: Raw LLM output
+        client: Bedrock client (for LLM repair)
+        original_prompt: Original prompt (for LLM repair context)
+        validation_model: Pydantic model class to validate against
+        logger_callback: Optional callback for logging events
+        
+    Returns:
+        Parsed dict/list or None if failed.
     """
     global _metrics
     
@@ -653,12 +681,12 @@ def parse_json_safe(text: str, client=None, original_prompt: str = None) -> dict
         s = s.strip()
         # Remove opening fence
         if s.startswith("```json"):
-            s = s[7:]
+            s = s[7:]  # pyre-ignore[16]
         elif s.startswith("```"):
-            s = s[3:]
+            s = s[3:]  # pyre-ignore[16]
         # Remove closing fence
         if s.endswith("```"):
-            s = s[:-3]
+            s = s[:-3]  # pyre-ignore[16]
         return s.strip()
     
     # CRITICAL: Strip markdown code fences FIRST (most common parse failure)
@@ -681,11 +709,39 @@ def parse_json_safe(text: str, client=None, original_prompt: str = None) -> dict
     except json.JSONDecodeError:
         pass
     
-    # Attempt JSON repair if client available (MAX 1 repair per call)
-    if client and original_prompt and _metrics["repair_count"] < MAX_REPAIR_ATTEMPTS:
+    # Try local repair with json_repair library (FAST & FREE)
+    repaired_obj = None
+    if json_repair:
         try:
-            _metrics["repair_count"] += 1
-            print(f"🔧 Attempting JSON repair (repair #{_metrics['repair_count']})...")
+            # repair_json returns the parsed object, not string
+            repaired_obj = json_repair.repair_json(clean_text, return_objects=True)
+            if repaired_obj is not None:
+                # If validation model provided, validate it
+                if validation_model:
+                    try:
+                        # Validating schema
+                        validated = validation_model(**repaired_obj)
+                        print(f"✅ Pydantic validation successful: {validation_model.__name__}")
+                        return validated.dict()
+                    except Exception as e:
+                        print(f"⚠️ Pydantic validation failed: {e}")
+                        repaired_obj = None # Treat as failure to trigger LLM repair
+                        _metrics["warnings"].append(f"SCHEMA_VALIDATION_FAILED:{validation_model.__name__}")  # pyre-ignore[16]
+                
+                    if logger_callback and repaired_obj:
+                         logger_callback(level="INFO", message=f"✅ Pydantic Validation Passed ({validation_model.__name__ if validation_model else 'Generic'})")
+                else:
+                    print("✅ Local JSON repair successful")
+                    return repaired_obj
+        except Exception as e:
+            print(f"⚠️ Local JSON repair/validation failed: {e}")
+            repaired_obj = None
+    
+    # Attempt LLM-based repair if local repair/validation failed (MAX 1 repair per call)
+    if client and original_prompt and _metrics["repair_count"] < MAX_REPAIR_ATTEMPTS:  # pyre-ignore[58]
+        try:
+            _metrics["repair_count"] += 1  # pyre-ignore[58]
+            print(f"🔧 Attempting LLM JSON repair (repair #{_metrics['repair_count']})...")
             
             repair_prompt = f"""The following text should be valid JSON but has errors. 
 Fix it and return ONLY the corrected JSON, nothing else. Do NOT wrap in markdown code fences:
@@ -694,37 +750,61 @@ Fix it and return ONLY the corrected JSON, nothing else. Do NOT wrap in markdown
             repaired = invoke_bedrock(client, repair_prompt, temperature=0.0, max_tokens=300)
             # CRITICAL: Also strip markdown from repair output
             repaired = strip_markdown_fences(repaired)
+            
+            # recursive try local repair on the LLM output too
+            if json_repair:
+                 try:
+                    repaired_obj = json_repair.repair_json(repaired, return_objects=True)
+                    if repaired_obj is not None:
+                        return repaired_obj
+                 except:
+                    pass
+
             json_match = re.search(r'\{[\s\S]*\}', repaired)
             if json_match:
                 result = json.loads(json_match.group())
-                print(f"✅ JSON repair successful")
+                print(f"✅ LLM JSON repair successful")
                 return result
         except Exception as e:
-            print(f"⚠️ JSON repair failed: {e}")
-            _metrics["warnings"].append("JSON_REPAIR_FAILED")
+            print(f"⚠️ LLM JSON repair failed: {e}")
+            _metrics["warnings"].append("JSON_REPAIR_FAILED")  # pyre-ignore[16]
     
-    print(f"⚠️ JSON parse failed (first 50 chars): {text[:50]}...")
-    _metrics["warnings"].append("JSON_PARSE_FAILED")
-    return None
+    print(f"⚠️ JSON parse failed (first 50 chars): {text[:50]}...")  # pyre-ignore[16]
+    _metrics["warnings"].append("JSON_PARSE_FAILED")  # pyre-ignore[16]
+    return None  # pyre-ignore[7]
 
 
 # ============================================================================
 # HOOK GENERATION & SCORING
 # ============================================================================
 
-def generate_hooks_batch(client, topic: str, era: str) -> List[str]:
+def generate_hooks_batch(client, topic: str, era: str, context: str = "", angle: str = "") -> List[str]:
     """Generate 3 hooks in a single API call."""
-    prompt = HOOK_GENERATOR_PROMPT.format(topic=topic, era=era)
+    context_block = f"SOURCE TEXT (Use ONLY these facts):\n{context[:1000]}" if context else ""  # pyre-ignore[6]
+    angle_block = f"VIRAL ANGLE (Focus on this):\n{angle}" if angle else ""
+    
+    prompt = HOOK_GENERATOR_PROMPT.format(
+        topic=topic, 
+        era=era,
+        context_block=context_block,
+        angle_block=angle_block
+    )
+    
+    # Inject prompt memory (learned DO/DON'T examples) if available
+    memory_injection = format_prompt_memory()
+    if memory_injection:
+        prompt += memory_injection
+    
     
     response = invoke_bedrock(client, prompt, temperature=WRITER_TEMPERATURE, max_tokens=200)
-    result = parse_json_safe(response, client, prompt)
+    result = parse_json_safe(response, client, prompt, validation_model=models.HookBatch if models else None)
     
     if result and "hooks" in result:
         return result["hooks"]
     
     # Fallback: try to extract hooks manually
     lines = [l.strip() for l in response.split('\n') if l.strip() and not l.startswith('{')]
-    return lines[:3] if lines else ["Failed to generate hooks"]
+    return lines[:3] if lines else ["Failed to generate hooks"]  # pyre-ignore[6]
 
 
 def evaluate_hooks_batch(client, hooks: List[str]) -> List[dict]:
@@ -736,7 +816,7 @@ def evaluate_hooks_batch(client, hooks: List[str]) -> List[dict]:
     )
     
     response = invoke_bedrock(client, prompt, temperature=EVALUATOR_TEMPERATURE, max_tokens=400)
-    result = parse_json_safe(response, client, prompt)
+    result = parse_json_safe(response, client, prompt, validation_model=models.HookEvaluationBatch if models else None)
     
     if result and "evaluations" in result:
         return result["evaluations"]
@@ -755,7 +835,7 @@ def refine_hook(client, hook: str, fixes: List[str]) -> str:
     return cleaned if cleaned else hook
 
 
-def generate_winning_hook(client, topic: str, era: str) -> Tuple[str, float, dict]:
+def generate_winning_hook(client, topic: str, era: str, context: str = "", angle: str = "") -> Tuple[str, float, dict]:
     """
     Generate hooks with iterative refinement until threshold met.
     
@@ -771,11 +851,11 @@ def generate_winning_hook(client, topic: str, era: str) -> Tuple[str, float, dic
         
         if iteration == 0:
             # First iteration: generate 3 hooks batch
-            hooks = generate_hooks_batch(client, topic, era)
+            hooks = generate_hooks_batch(client, topic, era, context, angle)
             stats["total_hooks_generated"] += len(hooks)
         else:
             # Refinement: refine best hook based on fixes
-            refined = refine_hook(client, best_hook, best_fixes)
+            refined = refine_hook(client, best_hook, best_fixes)  # pyre-ignore[6]
             hooks = [refined]
             stats["total_hooks_generated"] += 1
         
@@ -793,15 +873,14 @@ def generate_winning_hook(client, topic: str, era: str) -> Tuple[str, float, dic
             
             # Tie-breaker: clarity first, then shorter
             is_tied = abs(score - best_score) < SCORE_TIE_THRESHOLD
-            best_clarity = best_fixes[0] if best_fixes and isinstance(best_fixes[0], (int, float)) else 0
-            
             if is_tied and best_hook:
                 # First: higher clarity wins
+                best_clarity = stats.get("best_clarity", 0)
                 if clarity > best_clarity:
                     is_better = True
                     print(f"    ↳ Tie-breaker: higher clarity ({clarity}) wins")
                 # Second: if clarity same, shorter wins
-                elif clarity == best_clarity and len(hook_text.split()) < len(best_hook.split()):
+                elif clarity == best_clarity and len(hook_text.split()) < len(best_hook.split()):  # pyre-ignore[16]
                     is_better = True
                     print(f"    ↳ Tie-breaker: shorter hook ({len(hook_text.split())} words)")
             
@@ -809,11 +888,9 @@ def generate_winning_hook(client, topic: str, era: str) -> Tuple[str, float, dic
                 best_score = score
                 best_hook = hook_text
                 best_fixes = eval_item.get("fixes", [])
-                # Store clarity for tie-breaking (hacky but efficient)
-                if not best_fixes:
-                    best_fixes = [clarity]
+                stats["best_clarity"] = clarity
         
-        print(f"  Hook iteration {iteration + 1}: best score = {best_score}")
+        print(f"  Hook iteration {iteration + 1}: best score = {best_score}")  # pyre-ignore[58]
         
         # Check if threshold met (mode-aware)
         threshold = get_threshold("hook_threshold")
@@ -821,7 +898,7 @@ def generate_winning_hook(client, topic: str, era: str) -> Tuple[str, float, dic
             print(f"✅ Hook approved: {best_score} (threshold: {threshold})")
             break
     
-    stats["final_score"] = best_score
+    stats["final_score"] = best_score  # pyre-ignore[26]
     return best_hook, best_score, stats
 
 
@@ -834,19 +911,26 @@ def generate_section_variants(
     section_type: str, 
     hook: str, 
     topic: str, 
-    era: str
+    era: str,
+    context: str = "",
+    angle: str = ""
 ) -> List[str]:
     """Generate 2 variants of a section in a single API call."""
+    context_block = f"SOURCE TEXT (Use ONLY these facts):\n{context[:1000]}" if context else ""  # pyre-ignore[6]
+    angle_block = f"VIRAL ANGLE (Focus on this):\n{angle}" if angle else ""
+
     prompt = SECTION_GENERATOR_PROMPT.format(
         section_type=section_type.upper(),
         hook=hook,
         topic=topic,
         era=era,
+        context_block=context_block,
+        angle_block=angle_block,
         section_rules=SECTION_RULES.get(section_type, "")
     )
     
     response = invoke_bedrock(client, prompt, temperature=WRITER_TEMPERATURE, max_tokens=300)
-    result = parse_json_safe(response, client, prompt)
+    result = parse_json_safe(response, client, prompt, validation_model=models.SectionVariants if models else None)
     
     if result and "variants" in result:
         return result["variants"]
@@ -871,7 +955,7 @@ def evaluate_section_variants(
     )
     
     response = invoke_bedrock(client, prompt, temperature=EVALUATOR_TEMPERATURE, max_tokens=400)
-    result = parse_json_safe(response, client, prompt)
+    result = parse_json_safe(response, client, prompt, validation_model=models.SectionEvaluationBatch if models else None)
     
     if result and "evaluations" in result:
         return result["evaluations"]
@@ -902,7 +986,9 @@ def generate_winning_section(
     section_type: str, 
     hook: str, 
     topic: str, 
-    era: str
+    era: str,
+    context: str = "",
+    angle: str = ""
 ) -> Tuple[str, float, dict]:
     """
     Generate section with iterative refinement.
@@ -919,11 +1005,11 @@ def generate_winning_section(
         
         if iteration == 0:
             # First iteration: generate 2 variants
-            variants = generate_section_variants(client, section_type, hook, topic, era)
+            variants = generate_section_variants(client, section_type, hook, topic, era, context, angle)
             stats["variants_generated"] += len(variants)
         else:
             # Refinement
-            refined = refine_section(client, section_type, best_text, best_fixes, hook)
+            refined = refine_section(client, section_type, best_text, best_fixes, hook)  # pyre-ignore[6]
             variants = [refined]
             stats["variants_generated"] += 1
         
@@ -946,7 +1032,7 @@ def generate_winning_section(
                 if section_type == "outro" and punch > best_punch:
                     is_better = True
                     print(f"    ↳ Tie-breaker: punchier outro selected")
-                elif section_type == "context" and len(text.split()) < len(best_text.split()):
+                elif section_type == "context" and len(text.split()) < len(best_text.split()):  # pyre-ignore[16]
                     is_better = True  # Clearer = shorter for context
                     print(f"    ↳ Tie-breaker: clearer (shorter) context selected")
             
@@ -956,13 +1042,13 @@ def generate_winning_section(
                 best_fixes = eval_item.get("fixes", [])
                 best_punch = punch
         
-        print(f"  {section_type.upper()} iteration {iteration + 1}: best score = {best_score}")
+        print(f"  {section_type.upper()} iteration {iteration + 1}: best score = {best_score}")  # pyre-ignore[16]
         
-        if best_score >= SECTION_THRESHOLD:
-            print(f"✅ {section_type.upper()} approved: {best_score}")
+        if best_score >= get_threshold("section_threshold"):
+            print(f"✅ {section_type.upper()} approved: {best_score}")  # pyre-ignore[16]
             break
     
-    stats["final_score"] = best_score
+    stats["final_score"] = best_score  # pyre-ignore[26]
     return best_text, best_score, stats
 
 
@@ -974,7 +1060,7 @@ def evaluate_full_script(client, full_script: str) -> dict:
     """Evaluate the complete assembled script."""
     prompt = FINAL_EVALUATOR_PROMPT.format(full_script=full_script)
     response = invoke_bedrock(client, prompt, temperature=EVALUATOR_TEMPERATURE, max_tokens=200)
-    result = parse_json_safe(response, client, prompt)
+    result = parse_json_safe(response, client, prompt, validation_model=models.FinalEvaluation if models else None)
     
     if result:
         return result
@@ -1014,7 +1100,7 @@ def assemble_script(
     
     # Create safe title
     safe_title = re.sub(r'[^\w\s-]', '', topic)
-    safe_title = re.sub(r'[-\s]+', '_', safe_title).strip('_')[:50]
+    safe_title = re.sub(r'[-\s]+', '_', safe_title).strip('_')[:50]  # pyre-ignore[16]
     
     # Era visual style
     era_styles = {
@@ -1029,31 +1115,31 @@ def assemble_script(
     era_style = era_styles.get(era, era_styles["early_20th"])
     
     return {
-        "title": f"{topic[:40]} 📜",
+        "title": f"{topic[:40]} 📜",  # pyre-ignore[16]
         "safe_title": safe_title,
         "voiceover_text": full_text.replace('\n\n', ' '),
         "segments": [
             {
                 "start": 0,
-                "end": round(hook_end, 1),
+                "end": round(float(hook_end), 1),  # pyre-ignore[6]
                 "text": hook,
                 "image_prompt": f"{topic}, dramatic opening scene, {era_style}, 9:16 vertical composition"
             },
             {
-                "start": round(hook_end, 1),
-                "end": round(context_end, 1),
+                "start": round(float(hook_end), 1),  # pyre-ignore[6]
+                "end": round(float(context_end), 1),  # pyre-ignore[6]
                 "text": context,
                 "image_prompt": f"{topic}, historical context scene, {era_style}, 9:16 vertical composition"
             },
             {
-                "start": round(context_end, 1),
-                "end": round(body_end, 1),
+                "start": round(float(context_end), 1),  # pyre-ignore[6]
+                "end": round(float(body_end), 1),  # pyre-ignore[6]
                 "text": body,
                 "image_prompt": f"{topic}, main action scene, {era_style}, dramatic lighting, 9:16 vertical composition"
             },
             {
-                "start": round(body_end, 1),
-                "end": round(total_duration, 1),
+                "start": round(float(body_end), 1),  # pyre-ignore[6]
+                "end": round(float(total_duration), 1),  # pyre-ignore[6]
                 "text": outro,
                 "image_prompt": f"{topic}, conclusion scene, {era_style}, atmospheric, 9:16 vertical composition"
             }
@@ -1092,10 +1178,11 @@ PIPELINE_TOPICS = [
 
 
 def generate_script_pipeline(
-    topic: str = None, 
-    era: str = None, 
-    region_name: str = None,
-    mode: str = "quality"
+    topic: Optional[str] = None, 
+    era: Optional[str] = None, 
+    region_name: Optional[str] = None,
+    mode: str = "quality",
+    logger_callback: Optional[Callable] = None
 ) -> dict:
     """
     Main pipeline: Generate script with iterative scoring and refinement.
@@ -1108,6 +1195,7 @@ def generate_script_pipeline(
         era: Optional era for visual styling
         region_name: AWS region for Bedrock
         mode: 'quality' (strict) or 'fast' (relaxed thresholds)
+        logger_callback: Optional callback(level, message, metadata) for status updates
         
     Returns:
         Script dict compatible with existing video pipeline
@@ -1139,13 +1227,13 @@ def generate_script_pipeline(
             selected_era = selection.get("era", "early_20th")
         
         # Normalize era to standard enum
-        selected_era = normalize_era(selected_era)
+        selected_era = normalize_era(selected_era)  # pyre-ignore[6]
         
         # Extract topic entity for diversity tracking
         topic_words = selected_topic.split()
         topic_entity = topic_words[0] if topic_words else "unknown"
         # Try to find proper noun (capitalized word after first)
-        for word in topic_words[1:5]:
+        for word in list(topic_words[1:5]):  # pyre-ignore[16]
             if len(word) > 0 and word[0].isupper() and word.lower() not in ['the', 'a', 'an', 'in', 'on', 'at']:
                 topic_entity = word.strip('.,!?')
                 break
@@ -1158,46 +1246,113 @@ def generate_script_pipeline(
             break
         else:
             print(f"⛔ Diversity gate blocked: {diversity_result['reason']}")
-            _metrics["warnings"].append(f"DIVERSITY_BLOCKED:{diversity_result['reason']}")
+            _metrics["warnings"].append(f"DIVERSITY_BLOCKED:{diversity_result['reason']}")  # pyre-ignore[16]
             if topic and topic_attempt == 0:
                 print("↳ User-specified topic blocked, trying random...")
     else:
         # All attempts failed, force through with warning
         print("⚠️ Max topic attempts reached, proceeding with last selection")
-        _metrics["warnings"].append("DIVERSITY_GATE_FORCED")
+        _metrics["warnings"].append("DIVERSITY_GATE_FORCED")  # pyre-ignore[16]
     
     print(f"📜 Topic: {selected_topic}")
     print(f"🕰️ Era: {selected_era} (normalized)")
     print(f"👤 Entity: {topic_entity}")
     
+    print(f"📜 Topic: {selected_topic}")
+    print(f"🕰️ Era: {selected_era} (normalized)")
+    print(f"👤 Entity: {topic_entity}")
+    
+    
+    if logger_callback:
+        logger_callback(level="INFO", message=f"📜 Selected Topic: {selected_topic}")  # pyre-ignore[29]
+
+    # Step 0: Research & Grounding
+    print("\n📚 STEP 0: Researching & Angle Hunting...")
+    if logger_callback:
+        logger_callback(level="INFO", message=f"📚 Researching '{selected_topic}'...")
+    
+    wiki_context = get_wiki_summary(selected_topic)
+    
+    # Fix Era Mismatch based on text content (e.g. "1520" -> "ottoman")
+    if wiki_context:
+        original_era = selected_era
+        selected_era = refine_era_from_text(wiki_context, selected_era)
+        if selected_era != original_era:
+             print(f"🕰️ Era Refined via Text Analysis: {original_era} -> {selected_era}")
+
+    viral_angle = ""
+    
+    if wiki_context:
+        print("✅ Wikipedia context found. Hunting for angle...")
+        angle_data = find_viral_angle(client, selected_topic, wiki_context, invoke_bedrock)
+        
+        if angle_data and "angle" in angle_data:
+            viral_angle = angle_data["angle"]
+            reason = angle_data.get("reason", "No reason provided")
+            print(f"🎯 Viral Angle: {viral_angle}")
+            print(f"   Reason: {reason}")
+            
+            if logger_callback:
+                logger_callback(level="INFO", message=f"💎 Angle Found: {viral_angle[:40]}...")
+        else:
+            print("⚠️ Angle hunting failed or returned no angle.")
+            
+        if logger_callback:
+            logger_callback(level="INFO", message="✅ Context Found. Anti-Hallucination Mode ON.")
+    else:
+        print("⚠️ No context found. Using general knowledge (Risky).")
+        if logger_callback:
+            logger_callback(level="WARNING", message="⚠️ No Context Found. Using General Knowledge.")
+
     # Step 1: Generate winning hook
     print("\n🔥 STEP 1: Generating hook...")
-    hook, hook_score, hook_stats = generate_winning_hook(client, selected_topic, selected_era)
+    if logger_callback:
+        logger_callback(level="INFO", message="🔥 Generating Hook & Titles...")
+
+    hook, hook_score, hook_stats = generate_winning_hook(client, selected_topic, selected_era, wiki_context, viral_angle)
     print(f"   Final hook ({hook_score}): {hook}")
     
     # Step 1.5: Evaluate hook KPI metrics (YouTube behavior prediction)
     print("\n📊 STEP 1.5: Evaluating hook KPI...")
     hook_kpi = evaluate_hook_kpi(client, hook)
+    
+    # Generate titles now to update UI immediately
+    titles = generate_title_variants(client, hook, selected_topic)
+    selected_title = titles[0] if titles else selected_topic
+    
+    if logger_callback:
+        logger_callback(
+            level="INFO", 
+            message=f"✅ Titles Generated. Primary: '{selected_title}'", 
+            metadata={"title": selected_title}
+        )
+
     print(f"   instant_clarity: {hook_kpi['instant_clarity']} | curiosity_gap: {hook_kpi['curiosity_gap']}")
     print(f"   swipe_risk: {hook_kpi['swipe_risk']} (higher=less swipe) | predicted_retention: {hook_kpi['predicted_retention']}%")
     
     # Step 2: Generate sections
+    # Step 2: Generate sections
     print("\n📝 STEP 2: Generating sections...")
+    if logger_callback:
+        logger_callback(level="INFO", message="📝 Generating Sections (Context, Body, Outro)...")
     
     context, context_score, context_stats = generate_winning_section(
-        client, "context", hook, selected_topic, selected_era
+        client, "context", hook, selected_topic, selected_era, wiki_context, viral_angle
     )
     
     body, body_score, body_stats = generate_winning_section(
-        client, "body", hook, selected_topic, selected_era
+        client, "body", hook, selected_topic, selected_era, wiki_context, viral_angle
     )
     
     outro, outro_score, outro_stats = generate_winning_section(
-        client, "outro", hook, selected_topic, selected_era
+        client, "outro", hook, selected_topic, selected_era, wiki_context, viral_angle
     )
     
     # Step 3: Assemble and final eval
+    # Step 3: Assemble and final eval
     print("\n🎯 STEP 3: Final assembly and evaluation...")
+    if logger_callback:
+        logger_callback(level="INFO", message="🎯 Assembling Final Script...")
     
     scores = {
         "hook_score": hook_score,
@@ -1216,7 +1371,7 @@ def generate_script_pipeline(
     # Step 4: Rewrite weakest section if final score too low
     if final_score < FINAL_THRESHOLD and weakest != "none" and weakest != "unknown":
         print(f"\n🔧 STEP 4: Rewriting weakest section ({weakest})...")
-        _metrics["warnings"].append(f"WEAKEST_SECTION_REWRITE:{weakest}")
+        _metrics["warnings"].append(f"WEAKEST_SECTION_REWRITE:{weakest}")  # pyre-ignore[16]
         
         if weakest == "hook":
             hook, hook_score, _ = generate_winning_hook(client, selected_topic, selected_era)
@@ -1239,7 +1394,7 @@ def generate_script_pipeline(
     # Final scores
     scores["final_score"] = final_score
     scores["weakest_section"] = final_eval.get("weakest_section", "none")
-    scores["hook_kpi"] = hook_kpi  # Add hook KPI to scores
+    scores["hook_kpi"] = hook_kpi  # pyre-ignore[6]: Add hook KPI to scores
     
     # Collect all stats
     all_stats = {
@@ -1276,7 +1431,7 @@ def generate_script_pipeline(
     log_output = {
         "pipeline_version": "2.3",
         "mode": mode,
-        "topic": selected_topic[:50],
+        "topic": selected_topic[:50],  # pyre-ignore[16]
         "topic_entity": topic_entity,
         "era": selected_era,
         "theme": diversity_data["theme"],
@@ -1318,11 +1473,12 @@ def generate_script_pipeline(
 # ============================================================================
 
 def generate_script_with_fallback(
-    topic: str = None,
-    era: str = None,
-    region_name: str = None,
+    topic: Optional[str] = None,
+    era: Optional[str] = None,
+    region_name: Optional[str] = None,
     use_pipeline: bool = True,
-    prompt_memory: dict = None
+    prompt_memory: Optional[dict] = None,
+    logger_callback: Optional[Callable] = None
 ) -> dict:
     """
     Generate script with automatic fallback to old system.
@@ -1334,7 +1490,7 @@ def generate_script_with_fallback(
         prompt_memory: DO/DON'T examples from autopilot for writer/evaluator prompts
     """
     if not use_pipeline:
-        from script_gen import generate_history_script
+        from script_gen import generate_history_script  # pyre-ignore[21]
         result = generate_history_script(topic=topic, era=era, region_name=region_name)
         result["pipeline_warnings"] = ["PIPELINE_DISABLED"]
         return result
@@ -1344,22 +1500,22 @@ def generate_script_with_fallback(
         if prompt_memory:
             global _prompt_memory
             _prompt_memory = prompt_memory
-        return generate_script_pipeline(topic=topic, era=era, region_name=region_name)
+        return generate_script_pipeline(topic=topic, era=era, region_name=region_name, logger_callback=logger_callback)
     except Exception as e:
         print(f"⚠️ Pipeline failed, falling back to old system: {e}")
         
         # Track fallback in metrics
         global _metrics
         _metrics["fallback_used"] = True
-        _metrics["warnings"].append(f"FALLBACK_USED:{str(e)[:50]}")
+        _metrics["warnings"].append(f"FALLBACK_USED:{str(e)[:50]}")  # pyre-ignore[16]
         
-        from script_gen import generate_history_script
+        from script_gen import generate_history_script  # pyre-ignore[21]
         result = generate_history_script(topic=topic, era=era, region_name=region_name)
-        result["pipeline_warnings"] = ["FALLBACK_USED", str(e)[:100]]
+        result["pipeline_warnings"] = ["FALLBACK_USED", str(e)[:100]]  # pyre-ignore[16]
         result["pipeline_metrics"] = get_metrics()
         
         # Log fallback event
-        print(f"📊 FALLBACK_METRIC: {json.dumps({'fallback_used': True, 'reason': str(e)[:100]})}")
+        print(f"📊 FALLBACK_METRIC: {json.dumps({'fallback_used': True, 'reason': str(e)[:100]})}")  # pyre-ignore[16]
         
         return result
 

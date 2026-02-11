@@ -31,7 +31,7 @@ def compose_video(
     title: str,
     subtitle_text: str,
     music_path: Optional[str] = None,
-    era: str = None
+    era: Optional[str] = None
 ) -> str:
     """
     Compose final video from historical image clips, audio, and music
@@ -48,7 +48,7 @@ def compose_video(
     Returns:
         Path to the final composed video
     """
-    from tts import get_audio_duration
+    from tts import get_audio_duration  # pyre-ignore[21]
     
     # Get audio duration to determine video length
     total_duration = get_audio_duration(audio_path)
@@ -65,7 +65,8 @@ def compose_video(
     clip_duration = total_duration / len(video_paths)
     print(f"📊 Video duration: {total_duration}s, {len(video_paths)} clips, {clip_duration:.2f}s each")
     
-    output_path = os.path.join(tempfile.gettempdir(), "final_video.mp4")
+    import uuid
+    output_path = os.path.join(tempfile.gettempdir(), f"final_video_{uuid.uuid4().hex[:8]}.mp4")  # pyre-ignore[16]
     
     # Build FFmpeg filter complex
     filter_parts = []
@@ -157,7 +158,7 @@ def compose_video(
     # Generate and apply subtitles using ASS format
     subtitle_path = None
     try:
-        from subtitle_gen import create_subtitle_file
+        from subtitle_gen import create_subtitle_file  # pyre-ignore[21]
         subtitle_path = create_subtitle_file(
             title=title,
             narration_text=subtitle_text,
@@ -177,7 +178,7 @@ def compose_video(
     sfx_path = None
     sfx_index = None
     try:
-        from sfx_generator import generate_context_sfx
+        from sfx_generator import generate_context_sfx  # pyre-ignore[21]
         sfx_path = generate_context_sfx(subtitle_text, total_duration)
         if sfx_path:
             print(f"🔊 DEBUG: SFX generated: {sfx_path}")
@@ -281,7 +282,7 @@ def compose_video(
     ]
     
     print(f"🎬 Running FFmpeg composition...")
-    print(f"📝 FILTER_COMPLEX (first 500 chars): {filter_complex[:500]}...")
+    print(f"📝 FILTER_COMPLEX (first 500 chars): {filter_complex[:500]}...")  # pyre-ignore[16]
     
     result = subprocess.run(
         cmd,
@@ -293,7 +294,7 @@ def compose_video(
     # Always log stderr for debugging
     if result.stderr:
         # Log last 1000 chars of stderr
-        stderr_tail = result.stderr[-1000:] if len(result.stderr) > 1000 else result.stderr
+        stderr_tail = result.stderr[-1000:] if len(result.stderr) > 1000 else result.stderr  # pyre-ignore[16]
         print(f"📋 FFmpeg stderr (last 1000 chars): {stderr_tail}")
     
     if result.returncode != 0:

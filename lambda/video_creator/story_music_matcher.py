@@ -4,7 +4,7 @@ Analyzes script content to select the most appropriate music
 Uses keyword analysis and emotional mapping
 """
 
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 import re
 
 
@@ -73,7 +73,7 @@ KEYWORD_MUSIC_MAP = {
     "king": ("epic", 3),
     "emperor": ("epic", 4),
     "queen": ("epic", 3),
-    "sultan": ("epic", 4),
+    "sultanate": ("epic", 4),
     "throne": ("epic", 3),
     
     # DOCUMENTARY/NEUTRAL keywords → documentary, ambient music
@@ -114,7 +114,7 @@ KEYWORD_MUSIC_MAP = {
 
 
 def analyze_script_mood(title: str, voiceover_text: str, 
-                       script_mood: str = None, era: str = None) -> Dict:
+                       script_mood: Optional[str] = None, era: Optional[str] = None) -> Dict:
     """
     Analyze script content and return music recommendation
     
@@ -145,7 +145,7 @@ def analyze_script_mood(title: str, voiceover_text: str,
     
     # Get top category
     if category_scores:
-        top_category = max(category_scores, key=category_scores.get)
+        top_category = max(category_scores, key=lambda k: category_scores[k])
         top_score = category_scores[top_category]
         total_score = sum(category_scores.values())
         confidence = min(0.95, top_score / max(total_score, 1) + 0.2)
@@ -167,7 +167,7 @@ def analyze_script_mood(title: str, voiceover_text: str,
                 "sad": "emotional",
                 "war": "epic",
             }
-            final_category = mood_mapping.get(script_mood, "documentary")
+            final_category = mood_mapping.get(script_mood, "documentary") if script_mood else "documentary"
             confidence = max(confidence, 0.6)
         
         if era and not final_category:
@@ -189,7 +189,7 @@ def analyze_script_mood(title: str, voiceover_text: str,
     return {
         "recommended_category": final_category,
         "confidence": confidence,
-        "matched_keywords": matched_keywords[:10],  # Top 10
+        "matched_keywords": list(matched_keywords[:10]),  # pyre-ignore[16]: Top 10
         "all_scores": category_scores,
         "fallback_used": top_category is None
     }

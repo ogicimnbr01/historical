@@ -263,7 +263,7 @@ def is_content_safe_for_youtube(source: str) -> bool:
     """Quick check if content from a source is safe for YouTube"""
     source_lower = source.lower()
     if source_lower in APPROVED_SOURCES:
-        return APPROVED_SOURCES[source_lower]["safe_for_youtube"]
+        return APPROVED_SOURCES[source_lower]["safe_for_youtube"]  # pyre-ignore[7]
     return False
 
 

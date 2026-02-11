@@ -5,14 +5,14 @@ Fetches video performance metrics for correlation with pipeline predictions.
 
 import json
 import os
-import boto3
-from datetime import datetime, timedelta
+import boto3  # pyre-ignore[21]
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, List
 
 # Google API client (installed via Lambda layer)
 try:
-    from google.oauth2.credentials import Credentials
-    from googleapiclient.discovery import build
+    from google.oauth2.credentials import Credentials  # pyre-ignore[21]
+    from googleapiclient.discovery import build  # pyre-ignore[21]
     GOOGLE_API_AVAILABLE = True
 except ImportError:
     GOOGLE_API_AVAILABLE = False
@@ -36,7 +36,7 @@ OAUTH_SECRET_NAME = os.environ.get("YOUTUBE_OAUTH_SECRET", "shorts/youtube-oauth
 # SECRETS MANAGEMENT
 # ============================================================================
 
-def get_oauth_credentials(region_name: str = None) -> Optional[dict]:
+def get_oauth_credentials(region_name: Optional[str] = None) -> Optional[dict]:
     """
     Retrieve YouTube OAuth credentials from AWS Secrets Manager.
     
@@ -59,7 +59,7 @@ def get_oauth_credentials(region_name: str = None) -> Optional[dict]:
         return None
 
 
-def build_youtube_client(region_name: str = None):
+def build_youtube_client(region_name: Optional[str] = None):
     """
     Build authenticated YouTube Analytics API client.
     """
@@ -138,8 +138,8 @@ def get_video_metrics(youtube_analytics, video_id: str, days_back: int = 7) -> D
             "shares": int
         }
     """
-    end_date = datetime.now().strftime("%Y-%m-%d")
-    start_date = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+    end_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    start_date = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime("%Y-%m-%d")
     
     try:
         response = youtube_analytics.reports().query(
@@ -161,7 +161,7 @@ def get_video_metrics(youtube_analytics, video_id: str, days_back: int = 7) -> D
                 "avg_view_percentage": row[3],  # 0-100, key correlation metric
                 "likes": row[4],
                 "shares": row[5],
-                "fetch_date": datetime.now().isoformat()
+                "fetch_date": datetime.now(timezone.utc).isoformat()
             }
         
         return {"video_id": video_id, "error": "no_data"}
@@ -202,7 +202,7 @@ def save_video_with_predictions(
     hook_family: str = "unknown",  # contradiction, revelation, challenge, contrast
     autopilot_config_version: int = 0,
     # AWS
-    region_name: str = None
+    region_name: Optional[str] = None
 ) -> bool:
     """
     Save video with full pipeline predictions for calibration analysis.
@@ -280,7 +280,7 @@ def save_video_with_predictions(
         return False
 
 
-def update_with_actual_metrics(video_id: str, metrics: Dict, region_name: str = None) -> bool:
+def update_with_actual_metrics(video_id: str, metrics: Dict, region_name: Optional[str] = None) -> bool:
     """
     Update video record with actual YouTube metrics.
     Sends low-performance alert if actual_retention < 20%.
@@ -303,7 +303,7 @@ def update_with_actual_metrics(video_id: str, metrics: Dict, region_name: str = 
                 ":ar": str(actual_retention),
                 ":v": str(metrics.get("views", 0)),
                 ":ad": str(metrics.get("avg_view_duration_seconds", 0)),
-                ":fd": datetime.now().isoformat(),
+                ":fd": datetime.now(timezone.utc).isoformat(),
                 ":s": "complete"
             }
         )
@@ -319,7 +319,7 @@ def update_with_actual_metrics(video_id: str, metrics: Dict, region_name: str = 
         return False
 
 
-def send_low_performance_alert(video_id: str, actual_retention: float, video_data: Dict, region_name: str = None):
+def send_low_performance_alert(video_id: str, actual_retention: float, video_data: Dict, region_name: Optional[str] = None):
     """
     Send SNS alert for low-performing videos (actual_retention < 20%).
     
@@ -410,7 +410,7 @@ Investigate: What made viewers swipe?
         print(f"⚠️ Failed to send low-performance alert: {e}")
 
 
-def get_linked_videos(region_name: str = None) -> List[Dict]:
+def get_linked_videos(region_name: Optional[str] = None) -> List[Dict]:
     """
     Get videos ready for analytics fetching.
     
@@ -441,7 +441,7 @@ def get_linked_videos(region_name: str = None) -> List[Dict]:
 
 
 # Legacy alias for backward compatibility
-def get_pending_videos(region_name: str = None) -> List[Dict]:
+def get_pending_videos(region_name: Optional[str] = None) -> List[Dict]:
     """DEPRECATED: Use get_linked_videos instead."""
     return get_linked_videos(region_name)
 
@@ -450,7 +450,7 @@ def get_pending_videos(region_name: str = None) -> List[Dict]:
 # MAIN FETCHER (Lambda Handler)
 # ============================================================================
 
-def fetch_all_pending_metrics(region_name: str = None) -> Dict:
+def fetch_all_pending_metrics(region_name: Optional[str] = None) -> Dict:
     """
     Main function: Fetch metrics for all linked videos.
     Called by scheduled Lambda (23:00 UTC daily).
@@ -477,7 +477,7 @@ def fetch_all_pending_metrics(region_name: str = None) -> Dict:
         print("[INFO] No linked videos found for analytics fetching")
         return {"results": results}
     
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     
     for video in linked_videos:
         video_id = video["video_id"]  # DynamoDB record ID (pending_...)
@@ -497,12 +497,10 @@ def fetch_all_pending_metrics(region_name: str = None) -> Dict:
         if publish_time:
             try:
                 publish_dt = datetime.fromisoformat(publish_time.replace("Z", "+00:00"))
-                # Handle timezone-aware/naive datetime comparison
-                if publish_dt.tzinfo:
-                    now_aware = datetime.now(publish_dt.tzinfo)
-                    hours_old = (now_aware - publish_dt).total_seconds() / 3600
-                else:
-                    hours_old = (now - publish_dt).total_seconds() / 3600
+                # Ensure publish_dt is timezone-aware for comparison with now (UTC)
+                if publish_dt.tzinfo is None:
+                    publish_dt = publish_dt.replace(tzinfo=timezone.utc)
+                hours_old = (now - publish_dt).total_seconds() / 3600
             except Exception as e:
                 print(f"[WARNING] Failed to parse publish_time for {video_id}: {e}")
                 hours_old = 48  # Assume middle range if can't parse
@@ -545,7 +543,7 @@ def fetch_all_pending_metrics(region_name: str = None) -> Dict:
     return {"results": results}
 
 
-def increment_retry_count(video_id: str, region_name: str = None):
+def increment_retry_count(video_id: str, region_name: Optional[str] = None):
     """Increment retry count for a video."""
     region = region_name or os.environ.get("AWS_REGION_NAME", "us-east-1")
     dynamodb = boto3.resource("dynamodb", region_name=region)
@@ -561,7 +559,7 @@ def increment_retry_count(video_id: str, region_name: str = None):
         print(f"[WARNING] Failed to increment retry count: {e}")
 
 
-def mark_as_failed(video_id: str, reason: str, region_name: str = None):
+def mark_as_failed(video_id: str, reason: str, region_name: Optional[str] = None):
     """Mark a video as failed after exhausting retries."""
     region = region_name or os.environ.get("AWS_REGION_NAME", "us-east-1")
     dynamodb = boto3.resource("dynamodb", region_name=region)

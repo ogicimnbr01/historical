@@ -8,23 +8,27 @@ All content is AI-generated and copyright-safe
 import json
 import os
 import random
-import boto3
+import boto3  # pyre-ignore[21]
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from typing import Optional
 
-from script_gen import generate_history_script
-from script_pipeline import generate_script_with_fallback
-from stock_fetcher import fetch_videos_by_segments
-from tts import generate_voiceover
-from video_composer import compose_video
-from music_fetcher import generate_historical_music
-from copyright_safety import reset_copyright_tracker, get_copyright_tracker
+from script_gen import generate_history_script, SAMPLE_TOPICS  # pyre-ignore[21]
+from script_pipeline import generate_script_with_fallback  # pyre-ignore[21]
+from difflib import SequenceMatcher
+
+METRICS_TABLE_NAME = os.environ.get('METRICS_TABLE_NAME', 'shorts_video_metrics')
+from stock_fetcher import fetch_videos_by_segments  # pyre-ignore[21]
+from tts import generate_voiceover  # pyre-ignore[21]
+from video_composer import compose_video  # pyre-ignore[21]
+from music_fetcher import generate_historical_music  # pyre-ignore[21]
+from copyright_safety import reset_copyright_tracker, get_copyright_tracker  # pyre-ignore[21]
 
 # YouTube Analytics integration (optional - for correlation tracking)
 try:
-    from youtube_analytics import save_video_with_predictions
+    from youtube_analytics import save_video_with_predictions  # pyre-ignore[21]
     ANALYTICS_AVAILABLE = True
 except ImportError:
     ANALYTICS_AVAILABLE = False
@@ -67,7 +71,7 @@ def update_job_status(job_id: str, status: str, **extra_fields):
         update_expr = "SET #status = :status, updated_at_utc = :updated"
         expr_values = {
             ":status": status,
-            ":updated": datetime.utcnow().isoformat() + "Z"
+            ":updated": datetime.now(timezone.utc).isoformat()
         }
         expr_names = {"#status": "status"}
         
@@ -86,7 +90,7 @@ def update_job_status(job_id: str, status: str, **extra_fields):
         logger.warning(f"Failed to update job status: {e}")
 
 
-def log_event(job_id: str, component: str, level: str, event: str, message: str, payload: dict = None):
+def log_event(job_id: str, component: str, level: str, event: str, message: str, payload: Optional[dict] = None):
     """
     Write structured log entry to DynamoDB run_logs table.
     
@@ -102,8 +106,8 @@ def log_event(job_id: str, component: str, level: str, event: str, message: str,
         return
     
     try:
-        ts = datetime.utcnow()
-        seq = uuid.uuid4().hex[:8]
+        ts = datetime.now(timezone.utc)
+        seq = uuid.uuid4().hex[:8]  # pyre-ignore[16]
         sk = f"{ts.isoformat()}Z#{component}#{seq}"
         
         item = {
@@ -131,11 +135,50 @@ def log_event(job_id: str, component: str, level: str, event: str, message: str,
         logger.warning(f"Failed to write log event: {e}")
 
 
+def create_pipeline_logger(job_id: Optional[str]):
+    """
+    Create a fail-safe logger callback for the script pipeline.
+    Handles DB logging and critical UI updates (title sync).
+    """
+    def pipeline_logger(level: str, message: str, metadata: Optional[dict] = None):
+        try:
+            # 1. CloudWatch Log (Always safe)
+            logger.info(f"[PIPELINE] {job_id} [{level}] {message}")
+            
+            # 2. DB Log Entry
+            if JOB_TRACKING_ENABLED and job_id:
+                # Map level to severity
+                severity = "INFO"
+                if level in ["WARNING", "WARN"]: severity = "WARN" 
+                elif level in ["ERROR", "CRITICAL"]: severity = "ERROR"
+                
+                log_event(
+                    job_id=job_id,
+                    component="video_generator",
+                    level=severity,
+                    event="PIPELINE_STEP",
+                    message=message,
+                    payload=metadata
+                )
+            
+            # 3. Critical UI Updates (Title Sync)
+            if metadata and "title" in metadata and job_id:
+                # Update job title immediately
+                update_job_status(job_id, "processing", title=metadata["title"])
+                logger.info(f"✨ UI Update: Title set to '{metadata['title']}'")
+                
+        except Exception as e:
+            # FAIL-SAFE: Never stop video generation because of a logging error
+            print(f"⚠️ LOGGER ERROR: Failed to log pipeline event: {e}")
+            
+    return pipeline_logger
+
+
 # =============================================================================
 # AUTOPILOT HELPERS
 # =============================================================================
 
-def load_autopilot_config(region_name: str = None) -> dict:
+def load_autopilot_config(region_name: Optional[str] = None) -> dict:
     """
     Load autopilot configuration from DynamoDB.
     Returns default config if not found.
@@ -206,7 +249,84 @@ def weighted_random_choice(weights: dict) -> str:
     return options[-1]  # Fallback
 
 
+# =============================================================================
+# TOPIC SELECTION & RETRY LOGIC
+# =============================================================================
+
+def get_recent_video_topics(limit: int = 50, region_name: Optional[str] = None) -> list:
+    """
+    Fetch topics of the most recent videos to prevent repetition.
+    Uses GSI1 (VIDEOS sorted by publish_time_utc) if available, or scan.
+    """
+    region = region_name or os.environ.get('AWS_REGION_NAME', 'us-east-1')
+    dynamodb = boto3.resource('dynamodb', region_name=region)
+    table = dynamodb.Table(METRICS_TABLE_NAME)
+    
+    topics = []
+    try:
+        # Try Query on GSI1 (efficient)
+        response = table.query(
+            IndexName='gsi1_publish_time',
+            KeyConditionExpression='gsi1pk = :pk',
+            ExpressionAttributeValues={':pk': 'VIDEOS'},
+            ScanIndexForward=False,  # Descending order (newest first)
+            Limit=limit
+        )
+        items = response.get('Items', [])
+        
+        # If GSI empty or not set up, try Scan fallback (for smaller tables)
+        if not items:
+            response = table.scan(Limit=limit * 2)  # Scan a bit more to be safe
+            items = response.get('Items', [])
+            # Sort in memory if needed
+            items.sort(key=lambda x: x.get('publish_time_utc', ''), reverse=True)
+            items = items[:limit]
+            
+        for item in items:
+            # Prefer original_topic, fallback to topic_entity or title
+            topic = item.get('topic_entity') or item.get('title', '')
+            if topic and topic.lower() != 'unknown':
+                topics.append(topic)
+                
+        logger.info(f"📚 Found {len(topics)} recent topics from history")
+        return topics
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to fetch recent topics: {e}")
+        return []
+
+def is_similar(new_topic: str, past_topics: list, threshold: float = 0.6) -> bool:
+    """Check if new topic is too similar to any past topic using fuzzy matching."""
+    if not new_topic:
+        return False
+        
+    new_topic_lower = new_topic.lower()
+    
+    for past in past_topics:
+        past_lower = past.lower()
+        if not past_lower:
+            continue
+            
+        # Direct substring check (e.g. "Fatih" in "Fatih Sultan Mehmet")
+        if len(new_topic_lower) > 4 and len(past_lower) > 4:
+            if new_topic_lower in past_lower or past_lower in new_topic_lower:
+                logger.info(f"⚠️ Topic Rejection: '{new_topic}' contains/inside '{past}'")
+                return True
+        
+        # Fuzzy match
+        similarity = SequenceMatcher(None, new_topic_lower, past_lower).ratio()
+        if similarity > threshold:
+            logger.info(f"⚠️ Topic Rejection: '{new_topic}' ~ '{past}' ({similarity:.2f})")
+            return True
+            
+    return False
+
+def select_random_topic_data():
+    """Select a random topic data (topic + era) from builtin list."""
+    return random.choice(SAMPLE_TOPICS)
+
+
 def lambda_handler(event, context):
+
     """
     Main Lambda handler for history video generation
     
@@ -280,8 +400,8 @@ def lambda_handler(event, context):
         logger.info(f"🤖 AUTOPILOT_DECISION | v={config_version} | mode={selected_mode} | title={selected_title_type} | hook={selected_hook_family} | recovery={recovery_mode} | weights={json.dumps(weights_snapshot)}")
         
         # Get parameters from event (can override autopilot)
-        topic = event.get('topic') if event else None
-        era = event.get('era') if event else None
+        topic_input = event.get('topic') if event else None
+        era_input = event.get('era') if event else None
         
         # Event can force specific mode/title (for testing)
         if event and event.get('force_mode'):
@@ -289,21 +409,110 @@ def lambda_handler(event, context):
             use_pipeline = (selected_mode == 'QUALITY')
             logger.info(f"🔧 Force override: mode={selected_mode}")
         
-        if topic:
-            logger.info(f"📜 Generating script for topic: {topic}")
-        else:
-            logger.info("📜 Generating script with random historical topic...")
+        # =====================================================================
+        # TOPIC SELECTION & RETRY LOOP
+        # =====================================================================
+        past_topics = get_recent_video_topics(limit=50, region_name=region)
+        failed_topics_session = []
+        script = None
         
-        # Step 1: Generate history script using Bedrock Claude
-        # Uses new pipeline with scoring/refinement, or falls back to old system
-        logger.info(f"🔧 Pipeline mode: {'NEW (v2.0)' if use_pipeline else 'LEGACY (v1.0)'}")
-        script = generate_script_with_fallback(
-            topic=topic, 
-            era=era, 
-            region_name=region, 
-            use_pipeline=use_pipeline,
-            prompt_memory=prompt_memory  # Pass DO/DON'T examples
-        )
+        # Max retries for "Burn After Reading" strategy
+        # If script is low quality, we burn the topic and try a new one
+        max_retries = 3 
+        
+        for attempt in range(max_retries):
+            current_try = attempt + 1
+            selected_topic = None
+            selected_era = None
+            
+            # 1. Deterministic Topic Selection
+            if topic_input:
+                # User provided topic - use it (no retry on topic, just script)
+                selected_topic = topic_input
+                selected_era = era_input
+                logger.info(f"📜 [Attempt {current_try}/{max_retries}] Using user topic: {selected_topic}")
+            else:
+                # Random Mode - Find a fresh topic
+                # Try up to 10 times to find a non-similar topic
+                for _ in range(10):
+                    topic_data = select_random_topic_data()
+                    candidate = topic_data.get('topic')
+                    
+                    # Check against history AND session failures
+                    if is_similar(candidate, past_topics + failed_topics_session):
+                        continue
+                        
+                    selected_topic = candidate
+                    selected_era = topic_data.get('era', 'early_20th')
+                    break
+                
+                if not selected_topic:
+                    # Fallback if we can't find unique
+                    topic_data = select_random_topic_data()
+                    selected_topic = topic_data.get('topic')
+                    selected_era = topic_data.get('era', 'early_20th')
+                    logger.warning("⚠️ Could not find unique topic, using random fallback")
+                
+                logger.info(f"📜 [Attempt {current_try}/{max_retries}] Selected random topic: {selected_topic}")
+
+            # 2. Generate Script
+            logger.info(f"🔧 Pipeline mode: {'NEW (v2.0)' if use_pipeline else 'LEGACY (v1.0)'}")
+            
+            try:
+                # Decide whether to use pipeline or legacy based on retries? 
+                # No, stick to autopilot decision unless fallback forced
+                
+                # Create logger callback
+                pipeline_logger = create_pipeline_logger(job_id)
+                
+                script_result = generate_script_with_fallback(
+                    topic=selected_topic, 
+                    era=selected_era, 
+                    region_name=region, 
+                    use_pipeline=use_pipeline,
+                    prompt_memory=prompt_memory,
+                    logger_callback=pipeline_logger
+                )
+                
+                # 3. Quality Check
+                # If user provided topic, we accept whatever we get
+                if topic_input:
+                    script = script_result
+                    break
+                
+                # Check for Fallback or Low Score in Random Mode
+                fallback_used = script_result.get('fallback_used', False) or "FALLBACK_USED" in script_result.get('pipeline_warnings', []) or "PIPELINE_DISABLED" in script_result.get('pipeline_warnings', [])
+                
+                # Note: "PIPELINE_DISABLED" means we intentionally used legacy. That's fine if use_pipeline=False.
+                # But if use_pipeline=True and we got fallback, that's a failure.
+                
+                real_failure = use_pipeline and fallback_used
+                if "PIPELINE_DISABLED" in script_result.get('pipeline_warnings', []):
+                    # This is expected if use_pipeline is False
+                    real_failure = False
+
+                if real_failure:
+                    logger.warning(f"⚠️ Attempt {current_try} failed: Pipeline fell back to legacy. Retrying with new topic...")
+                    failed_topics_session.append(selected_topic)
+                    continue
+                
+                # If we got here, it's good
+                script = script_result
+                break
+                
+            except Exception as e:
+                logger.error(f"❌ Attempt {current_try} error: {e}")
+                failed_topics_session.append(selected_topic)
+                # If last attempt, raise
+                if current_try == max_retries:
+                    raise e
+        
+        if not script:
+             raise Exception("Failed to generate valid script after max retries")
+
+        
+        # Static analysis guard
+        assert script is not None
         
         # Inject selected title type
         script['title_variant_type'] = selected_title_type
@@ -326,7 +535,7 @@ def lambda_handler(event, context):
         else:
             # Fallback: use search keywords as prompts
             logger.info("📍 No segments found, using keyword-based generation (fallback)")
-            from stock_fetcher import fetch_stock_videos
+            from stock_fetcher import fetch_stock_videos  # pyre-ignore[21]
             keywords = script.get('search_keywords', ['historical scene'])
             video_paths = fetch_stock_videos(keywords=keywords, num_clips=4)
         
@@ -334,7 +543,7 @@ def lambda_handler(event, context):
         # If AI generation completely failed, create visible color fallbacks
         if not video_paths or len(video_paths) == 0:
             logger.warning("⚠️ No video clips generated! Creating visible fallbacks...")
-            from stock_fetcher import create_simple_color_fallback
+            from stock_fetcher import create_simple_color_fallback  # pyre-ignore[21]
             video_paths = []
             for i in range(4):  # Create 4 fallback clips
                 fallback = create_simple_color_fallback(i)
@@ -353,8 +562,8 @@ def lambda_handler(event, context):
         
         # Step 4: Generate period-appropriate background music
         logger.info("🎵 Analyzing story for music selection...")
-        from tts import get_audio_duration
-        from story_music_matcher import get_music_category_for_script
+        from tts import get_audio_duration  # pyre-ignore[21]
+        from story_music_matcher import get_music_category_for_script  # pyre-ignore[21]
         
         audio_duration = get_audio_duration(audio_path)
         

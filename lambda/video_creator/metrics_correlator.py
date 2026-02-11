@@ -6,14 +6,14 @@ Now with feature-level analysis, MAE calculation, and mode segmentation.
 
 import json
 import os
-import boto3
-from typing import List, Dict, Tuple
+import boto3  # pyre-ignore[21]: third-party module without configured stubs
+from typing import List, Dict, Optional, Tuple
 from datetime import datetime, timedelta
 
 METRICS_TABLE_NAME = os.environ.get("METRICS_TABLE_NAME", "shorts_video_metrics")
 
 
-def get_completed_videos(days_back: int = 30, region_name: str = None) -> List[Dict]:
+def get_completed_videos(days_back: int = 30, region_name: Optional[str] = None) -> List[Dict]:
     """Get videos with both predicted and actual metrics.
     
     IMPORTANT: Only returns calibration_eligible=True videos.
@@ -24,28 +24,38 @@ def get_completed_videos(days_back: int = 30, region_name: str = None) -> List[D
     table = dynamodb.Table(METRICS_TABLE_NAME)
     
     try:
-        response = table.scan(
-            FilterExpression="#st = :s",
-            ExpressionAttributeNames={"#st": "status"},
-            ExpressionAttributeValues={":s": "complete"}
-        )
+        scan_kwargs = {
+            "FilterExpression": "#st = :s",
+            "ExpressionAttributeNames": {"#st": "status"},
+            "ExpressionAttributeValues": {":s": "complete"},
+        }
         
         cutoff = (datetime.now() - timedelta(days=days_back)).isoformat()
         items = []
-        excluded_count = 0
+        excluded_count: int = 0
         
-        for item in response.get("Items", []):
-            # Date filter
-            if item.get("publish_time_utc", item.get("upload_date", "")) < cutoff:
-                continue
+        # Paginate through all results
+        while True:
+            response = table.scan(**scan_kwargs)
             
-            # CRITICAL: Skip fallback runs (calibration_eligible=False)
-            # These have mismatched predictions vs published content
-            if item.get("calibration_eligible") is False:
-                excluded_count += 1
-                continue
+            for item in response.get("Items", []):
+                # Date filter
+                if item.get("publish_time_utc", item.get("upload_date", "")) < cutoff:
+                    continue
                 
-            items.append(item)
+                # CRITICAL: Skip fallback runs (calibration_eligible=False)
+                # These have mismatched predictions vs published content
+                if item.get("calibration_eligible") is False:
+                    excluded_count += 1  # pyre-ignore[58]: Pyre2 loses int type through while-True branches
+                    continue
+                    
+                items.append(item)
+            
+            # Check if there are more pages
+            if "LastEvaluatedKey" in response:
+                scan_kwargs["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+            else:
+                break
         
         if excluded_count > 0:
             print(f"[INFO] Excluded {excluded_count} ineligible videos (fallback runs)")
@@ -89,7 +99,7 @@ def calculate_mae(predicted: List[float], actual: List[float]) -> float:
     return sum(abs(p - a) for p, a in zip(predicted, actual)) / len(predicted)
 
 
-def analyze_correlations(region_name: str = None) -> Dict:
+def analyze_correlations(region_name: Optional[str] = None) -> Dict:
     """
     Comprehensive correlation analysis with:
     - Overall correlation
@@ -190,10 +200,10 @@ def analyze_correlations(region_name: str = None) -> Dict:
             mode_actual = [data["actual_retention"][i] for i in mode_indices]
             mode_analysis[mode] = {
                 "count": len(mode_indices),
-                "correlation": round(calculate_pearson_correlation(mode_pred, mode_actual), 3),
-                "mae": round(calculate_mae(mode_pred, mode_actual), 1),
-                "avg_predicted": round(sum(mode_pred) / len(mode_pred), 1),
-                "avg_actual": round(sum(mode_actual) / len(mode_actual), 1)
+                "correlation": round(float(calculate_pearson_correlation(mode_pred, mode_actual)), 3),  # pyre-ignore[6]
+                "mae": round(float(calculate_mae(mode_pred, mode_actual)), 1),  # pyre-ignore[6]
+                "avg_predicted": round(float(sum(mode_pred)) / len(mode_pred), 1),  # pyre-ignore[6]
+                "avg_actual": round(float(sum(mode_actual)) / len(mode_actual), 1)  # pyre-ignore[6]
             }
     
     # === TITLE VARIANT ANALYSIS ===
@@ -205,7 +215,7 @@ def analyze_correlations(region_name: str = None) -> Dict:
             variant_actual = [data["actual_retention"][i] for i in variant_indices]
             title_analysis[variant] = {
                 "count": len(variant_indices),
-                "avg_retention": round(sum(variant_actual) / len(variant_actual), 1)
+                "avg_retention": round(float(sum(variant_actual)) / len(variant_actual), 1)  # pyre-ignore[6]
             }
     
     # === INSIGHTS GENERATION ===
@@ -246,12 +256,12 @@ def analyze_correlations(region_name: str = None) -> Dict:
     return {
         "sample_size": n,
         "correlations": {
-            "predicted_vs_actual": round(corr_main, 3),
-            **{k: round(v, 3) for k, v in feature_correlations.items()}
+            "predicted_vs_actual": round(float(corr_main), 3),  # pyre-ignore[6]
+            **{k: round(float(v), 3) for k, v in feature_correlations.items()}  # pyre-ignore[6]
         },
-        "mae": round(mae, 1),
-        "avg_predicted": round(sum(data["predicted_retention"]) / n, 1),
-        "avg_actual": round(sum(data["actual_retention"]) / n, 1),
+        "mae": round(float(mae), 1),  # pyre-ignore[6]
+        "avg_predicted": round(float(sum(data["predicted_retention"])) / n, 1),  # pyre-ignore[6]
+        "avg_actual": round(float(sum(data["actual_retention"])) / n, 1),  # pyre-ignore[6]
         "mode_analysis": mode_analysis,
         "title_analysis": title_analysis,
         "insights": insights,
@@ -259,7 +269,7 @@ def analyze_correlations(region_name: str = None) -> Dict:
     }
 
 
-def generate_calibration_report(region_name: str = None) -> str:
+def generate_calibration_report(region_name: Optional[str] = None) -> str:
     """Generate human-readable calibration report."""
     analysis = analyze_correlations(region_name)
     

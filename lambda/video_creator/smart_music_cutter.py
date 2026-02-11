@@ -109,7 +109,7 @@ def find_best_segment(audio_path: str, target_duration: float = 15.0,
     
     if not loudness_data:
         # Fallback: random position after intro
-        max_start = max(0, total_duration - target_duration - 5)
+        max_start = max(0, total_duration - target_duration - 5)  # pyre-ignore[6]
         start = random.uniform(skip_intro, min(skip_intro + 30, max_start))
         return (start, target_duration)
     
@@ -125,7 +125,7 @@ def find_best_segment(audio_path: str, target_duration: float = 15.0,
     
     # Make sure we don't exceed audio length
     if best_start + target_duration > total_duration:
-        best_start = max(0, total_duration - target_duration - 2)
+        best_start = max(0, total_duration - target_duration - 2)  # pyre-ignore[6]
     
     print(f"🎵 Best segment found at {best_start:.1f}s (loudness: {best_segment[1]:.1f} dB)")
     
@@ -176,7 +176,7 @@ def cut_music_segment(input_path: str, output_path: str,
                 print(f"✅ Music cut: {start_time:.1f}s - {start_time + duration:.1f}s ({file_size} bytes)")
                 return True
         
-        print(f"⚠️ Music cut failed: {result.stderr[:200]}")
+        print(f"⚠️ Music cut failed: {result.stderr[:200]}")  # pyre-ignore[16]
         return False
         
     except Exception as e:

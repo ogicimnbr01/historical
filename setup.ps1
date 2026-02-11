@@ -60,7 +60,15 @@ if (-not (Test-Path $PythonZip)) {
     $PythonDir = Join-Path $TempDir "python"
     New-Item -ItemType Directory -Force -Path $PythonDir | Out-Null
     
-    pip install requests -t $PythonDir --quiet 2>$null
+    $RequirementsFile = Join-Path $ProjectDir "lambda\video_creator\requirements.txt"
+    if (Test-Path $RequirementsFile) {
+        Write-Host "Installing from $RequirementsFile..."
+        pip install -r $RequirementsFile -t $PythonDir --upgrade
+    }
+    else {
+        Write-Host "Installing default packages..."
+        pip install requests json_repair pydantic wikipedia-api -t $PythonDir --upgrade
+    }
     
     if ($LASTEXITCODE -eq 0) {
         Add-Type -AssemblyName System.IO.Compression.FileSystem

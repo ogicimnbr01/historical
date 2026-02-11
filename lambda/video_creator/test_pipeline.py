@@ -10,14 +10,14 @@ import sys
 
 # Fix Windows encoding
 if sys.platform == "win32":
-    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stdout.reconfigure(encoding='utf-8')  # pyre-ignore[16]
 
 # Set environment for local testing
 os.environ['S3_BUCKET_NAME'] = 'youtube-shorts-videos-20260119122010783300000001'
 os.environ['AWS_REGION_NAME'] = 'us-east-1'
 os.environ['PYTHONIOENCODING'] = 'utf-8'
 
-from script_pipeline import generate_script_pipeline, generate_script_with_fallback
+from script_pipeline import generate_script_pipeline, generate_script_with_fallback  # pyre-ignore[21]
 
 def test_pipeline():
     """Test the full pipeline."""

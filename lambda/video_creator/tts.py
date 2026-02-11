@@ -5,9 +5,10 @@ Deep, authoritative voices suitable for historical content
 """
 
 import os
-import boto3
+import boto3  # pyre-ignore[21]
 import tempfile
 import random
+from typing import Optional
 
 
 # AWS Polly client
@@ -154,7 +155,7 @@ def apply_phonetic_spelling(text: str) -> str:
     return result
 
 
-def generate_voiceover(text: str, voice_id: str = None, mood: str = "documentary") -> str:
+def generate_voiceover(text: str, voice_id: Optional[str] = None, mood: str = "documentary") -> str:
     """
     Generate documentary-style voiceover audio using AWS Polly
     Applies phonetic spelling for Turkish/foreign names
@@ -226,7 +227,7 @@ def generate_voiceover(text: str, voice_id: str = None, mood: str = "documentary
     
     # Save to temp file with unique name
     import uuid
-    audio_path = os.path.join(tempfile.gettempdir(), f"voiceover_{uuid.uuid4().hex[:8]}.mp3")
+    audio_path = os.path.join(tempfile.gettempdir(), f"voiceover_{uuid.uuid4().hex[:8]}.mp3")  # pyre-ignore[16]
     
     with open(audio_path, 'wb') as f:
         f.write(response['AudioStream'].read())

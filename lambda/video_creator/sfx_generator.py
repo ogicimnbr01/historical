@@ -98,7 +98,7 @@ def detect_context(text: str) -> List[str]:
     if not detected:
         detected.append("vinyl_crackle")
     
-    return detected[:2]  # Max 2 ambient layers
+    return detected[:2]  # Max 2 ambient layers  # pyre-ignore[16]
 
 
 def generate_ambient_sfx(sfx_type: str, duration: float = 15.0) -> Optional[str]:
@@ -112,7 +112,7 @@ def generate_ambient_sfx(sfx_type: str, duration: float = 15.0) -> Optional[str]
     Returns:
         Path to generated audio file or None
     """
-    unique_id = uuid.uuid4().hex[:6]
+    unique_id = uuid.uuid4().hex[:6]  # pyre-ignore[16]
     output_path = os.path.join(tempfile.gettempdir(), f"sfx_{sfx_type}_{unique_id}.m4a")
     
     # FFmpeg audio synthesis parameters by type
@@ -263,7 +263,7 @@ def generate_ambient_sfx(sfx_type: str, duration: float = 15.0) -> Optional[str]
     }
     
     config = sfx_configs.get(sfx_type, sfx_configs["vinyl_crackle"])
-    filter_str = config["filter"].format(duration=duration)
+    filter_str = config["filter"].format(duration=duration)  # pyre-ignore[16]
     volume = config["volume"]
     
     try:
@@ -285,7 +285,7 @@ def generate_ambient_sfx(sfx_type: str, duration: float = 15.0) -> Optional[str]
             print(f"🔊 Generated SFX: {sfx_type} -> {output_path}")
             return output_path
         else:
-            print(f"⚠️ SFX generation failed: {result.stderr[:100] if result.stderr else 'unknown'}")
+            print(f"⚠️ SFX generation failed: {result.stderr[:100] if result.stderr else 'unknown'}")  # pyre-ignore[16]
             return None
             
     except Exception as e:
@@ -407,7 +407,7 @@ def generate_event_sfx(sfx_type: str) -> Optional[str]:
     Generate short event-based sound effect (0.5-1.5 seconds)
     These are impact sounds, not ambient
     """
-    unique_id = uuid.uuid4().hex[:6]
+    unique_id = uuid.uuid4().hex[:6]  # pyre-ignore[16]
     output_path = os.path.join(tempfile.gettempdir(), f"event_{sfx_type}_{unique_id}.m4a")
     
     # Event SFX configurations - short, impactful sounds
@@ -494,7 +494,7 @@ def generate_event_sfx(sfx_type: str) -> Optional[str]:
             output_path
         ]
         
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)  # pyre-ignore[6]
         
         if result.returncode == 0 and os.path.exists(output_path):
             print(f"⚔️ Generated event SFX: {sfx_type} -> {output_path}")
@@ -518,7 +518,7 @@ def mix_event_with_ambient(event_type: str, ambient_path: str, duration: float) 
     if not event_path:
         return None
     
-    unique_id = uuid.uuid4().hex[:6]
+    unique_id = uuid.uuid4().hex[:6]  # pyre-ignore[16]
     output_path = os.path.join(tempfile.gettempdir(), f"mixed_sfx_{unique_id}.m4a")
     
     try:
@@ -563,7 +563,7 @@ if __name__ == "__main__":
     ]
     
     for text in test_texts:
-        print(f"\n📝 Text: {text[:50]}...")
+        print(f"\n📝 Text: {text[:50]}...")  # pyre-ignore[16]
         contexts = detect_context(text)
         print(f"🎧 Contexts: {contexts}")
         sfx_path = generate_context_sfx(text, 5.0)

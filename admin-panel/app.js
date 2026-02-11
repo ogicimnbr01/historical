@@ -189,7 +189,10 @@ function renderVideosTable() {
             <td><span class="badge ${video.status}">${video.status || 'pending'}</span></td>
             <td>
                 <button class="action-btn view" onclick="viewVideo('${video.video_id}')">View</button>
-                <button class="action-btn test" onclick="markAsTest('${video.video_id}')">TEST</button>
+                ${video.status === 'test'
+                ? `<button class="action-btn undo" onclick="unmarkTest('${video.video_id}')">↩ UNDO</button>`
+                : `<button class="action-btn test" onclick="markAsTest('${video.video_id}')">TEST</button>`
+            }
             </td>
         `;
 
@@ -444,10 +447,18 @@ async function saveVideoChanges(videoId) {
         const status = document.getElementById('detailStatus').value;
         const reason = document.getElementById('detailReason').value;
 
-        await apiCall(`/videos/${encodeURIComponent(videoId)}`, 'PATCH', {
+        const updates = {
             status: status,
             invalid_reason: reason || null
-        });
+        };
+
+        // When reverting from test to linked/pending, clean up test-mode fields
+        if (status === 'linked' || status === 'pending') {
+            updates.calibration_eligible = true;
+            if (!reason) updates.invalid_reason = null;
+        }
+
+        await apiCall(`/videos/${encodeURIComponent(videoId)}`, 'PATCH', updates);
 
         closeModal();
         loadVideos();
@@ -494,6 +505,28 @@ async function unlinkYouTube(videoId) {
         loadVideos();
     } catch (error) {
         alert('Failed to unlink: ' + error.message);
+    }
+}
+
+async function unmarkTest(videoId) {
+    if (!confirm(`Restore ${videoId} from TEST? This will set eligible=true and clear test reason.`)) {
+        return;
+    }
+
+    try {
+        // Check if video has YouTube link to determine target status
+        const video = videos.find(v => v.video_id === videoId);
+        const targetStatus = (video && video.youtube_video_id) ? 'linked' : 'pending';
+
+        await apiCall(`/videos/${encodeURIComponent(videoId)}`, 'PATCH', {
+            calibration_eligible: true,
+            status: targetStatus,
+            invalid_reason: null
+        });
+
+        loadVideos();
+    } catch (error) {
+        alert('Failed to unmark test: ' + error.message);
     }
 }
 
@@ -560,7 +593,10 @@ async function loadSystemActivity() {
             <div class="job-card ${job.status}">
                 <div class="job-header">
                     <span class="job-id">${job.job_id}</span>
-                    <span class="job-status ${job.status}">${job.status}</span>
+                    <div class="header-right">
+                        <span class="job-status ${job.status}">${job.status}</span>
+                        <button class="btn-icon delete-job" onclick="deleteJob('${job.job_id}')" title="Delete Job">✕</button>
+                    </div>
                 </div>
                 <div class="job-details">
                     <div>📅 Requested: ${formatDate(job.requested_at_utc)}</div>
@@ -766,6 +802,20 @@ function showToast(message, type = 'info') {
         toast.style.transform = 'translateX(100px)';
         setTimeout(() => toast.remove(), 300);
     }, 4000);
+}
+
+async function deleteJob(jobId) {
+    // No confirmation as requested
+    try {
+        await apiCall(`/jobs/${encodeURIComponent(jobId)}`, 'DELETE');
+
+        // Remove from UI immediately or reload
+        loadSystemActivity();
+        showToast('Job deleted', 'success');
+    } catch (error) {
+        console.error('Failed to delete job:', error);
+        showToast('Failed to delete: ' + error.message, 'error');
+    }
 }
 
 // ============================================================================

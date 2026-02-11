@@ -14,7 +14,7 @@ import json
 import os
 import random
 import math
-import boto3
+import boto3  # pyre-ignore[21]
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Dict, List, Tuple, Optional
@@ -78,7 +78,7 @@ RECOVERY_PRESET = {
 # DYNAMODB OPERATIONS
 # =============================================================================
 
-def get_autopilot_config(region_name: str = None) -> Dict:
+def get_autopilot_config(region_name: Optional[str] = None) -> Dict:
     """Get current autopilot configuration."""
     region = region_name or os.environ.get("AWS_REGION_NAME", "us-east-1")
     dynamodb = boto3.resource("dynamodb", region_name=region)
@@ -120,7 +120,7 @@ def get_default_config() -> Dict:
     }
 
 
-def save_autopilot_config(config: Dict, region_name: str = None) -> bool:
+def save_autopilot_config(config: Dict, region_name: Optional[str] = None) -> bool:
     """Save updated autopilot configuration."""
     region = region_name or os.environ.get("AWS_REGION_NAME", "us-east-1")
     dynamodb = boto3.resource("dynamodb", region_name=region)
@@ -139,7 +139,7 @@ def save_autopilot_config(config: Dict, region_name: str = None) -> bool:
         return False
 
 
-def get_complete_videos(region_name: str = None, limit: int = 50) -> List[Dict]:
+def get_complete_videos(region_name: Optional[str] = None, limit: int = 50) -> List[Dict]:
     """Get recently completed, eligible videos."""
     region = region_name or os.environ.get("AWS_REGION_NAME", "us-east-1")
     dynamodb = boto3.resource("dynamodb", region_name=region)
@@ -184,7 +184,7 @@ def calculate_reward(actual_retention: float, days_old: int) -> float:
         Normalized reward (0-1)
     """
     # Winsorize: clamp to [10, 85]
-    clamped = max(REWARD_MIN, min(REWARD_MAX, actual_retention))
+    clamped = max(REWARD_MIN, min(REWARD_MAX, actual_retention))  # pyre-ignore[6]
     
     # Normalize to 0-1
     normalized = (clamped - REWARD_MIN) / (REWARD_MAX - REWARD_MIN)
@@ -222,7 +222,7 @@ def sample_beta(alpha: float, beta: float) -> float:
     # Python's random doesn't have beta, so we approximate
     # For production, use numpy.random.beta if available
     try:
-        import numpy as np
+        import numpy as np  # pyre-ignore[21]
         return np.random.beta(alpha, beta)
     except ImportError:
         # Fallback: use gamma distribution relationship
@@ -301,14 +301,14 @@ def calculate_new_weights(
             change = MAX_DAILY_CHANGE if change > 0 else -MAX_DAILY_CHANGE
         
         clamped = max(min_bound, min(max_bound, current + change))
-        final_weights[arm] = round(clamped, 3)
+        final_weights[arm] = round(float(clamped), 3)  # pyre-ignore[6]
     
     # Normalize to sum to 1
     total = sum(final_weights.values())
-    if total > 0:
-        final_weights = {k: round(v / total, 3) for k, v in final_weights.items()}
+    if total > 0:  # pyre-ignore[58]
+        final_weights = {k: round(float(v) / total, 3) for k, v in final_weights.items()}  # pyre-ignore[6]
     
-    return final_weights
+    return final_weights  # pyre-ignore[7]
 
 
 # =============================================================================
@@ -358,7 +358,7 @@ def get_videos_in_last_24h(videos: List[Dict]) -> List[Dict]:
 # MAIN DECISION LOGIC
 # =============================================================================
 
-def run_decision_engine(region_name: str = None) -> Dict:
+def run_decision_engine(region_name: Optional[str] = None) -> Dict:
     """
     Main decision engine logic.
     
@@ -413,7 +413,7 @@ def run_decision_engine(region_name: str = None) -> Dict:
         save_autopilot_config(config, region)
         
         # Send critical alert
-        send_critical_alert(all_videos[:5], region)
+        send_critical_alert(all_videos[:5], region)  # pyre-ignore[16]
         
         result["action"] = "entered_recovery"
         result["message"] = f"Entered recovery mode after {CONSECUTIVE_FAIL_THRESHOLD} consecutive low performers"
@@ -426,7 +426,7 @@ def run_decision_engine(region_name: str = None) -> Dict:
         return result
     
     # Use sliding window if not enough recent videos
-    videos_for_update = recent_videos if len(recent_videos) >= MIN_VIDEOS_FOR_UPDATE else all_videos[:SLIDING_WINDOW_SIZE]
+    videos_for_update = recent_videos if len(recent_videos) >= MIN_VIDEOS_FOR_UPDATE else all_videos[:SLIDING_WINDOW_SIZE]  # pyre-ignore[16]
     
     # Update bandit state and weights
     bandit_state = config.get("bandit_state", {})
@@ -458,14 +458,14 @@ def run_decision_engine(region_name: str = None) -> Dict:
     
     # Calculate new weights for modes
     mode_arms = list(old_mode_weights.keys())
-    mode_bandit = {arm: bandit_state.get(f"mode_{arm}", {"alpha": 1, "beta": 1}) for arm in mode_arms}
+    mode_bandit = {arm: bandit_state.get(f"mode_{arm}", {"alpha": 1, "beta": 1}) for arm in mode_arms}  # pyre-ignore[16]
     new_mode_weights = calculate_new_weights(
         mode_bandit, mode_arms, old_mode_weights, explore_rate, WEIGHT_BOUNDS["mode"]
     )
     
     # Calculate new weights for titles
     title_arms = list(old_title_weights.keys())
-    title_bandit = {arm: bandit_state.get(f"title_{arm}", {"alpha": 1, "beta": 1}) for arm in title_arms}
+    title_bandit = {arm: bandit_state.get(f"title_{arm}", {"alpha": 1, "beta": 1}) for arm in title_arms}  # pyre-ignore[16]
     new_title_weights = calculate_new_weights(
         title_bandit, title_arms, old_title_weights, explore_rate, WEIGHT_BOUNDS["title"]
     )
@@ -508,7 +508,7 @@ def run_decision_engine(region_name: str = None) -> Dict:
 # NOTIFICATIONS
 # =============================================================================
 
-def send_update_notification(changes: Dict, n_videos: int, region_name: str = None):
+def send_update_notification(changes: Dict, n_videos: int, region_name: Optional[str] = None):
     """Send 'system updated' notification (no demoralizing metrics)."""
     if not SNS_TOPIC_ARN:
         return
@@ -553,7 +553,7 @@ Sistem kendini optimize etmektedir.
         print(f"⚠️ Failed to send update notification: {e}")
 
 
-def send_critical_alert(failed_videos: List[Dict], region_name: str = None):
+def send_critical_alert(failed_videos: List[Dict], region_name: Optional[str] = None):
     """Send critical alert when entering recovery mode."""
     if not SNS_TOPIC_ARN:
         return
