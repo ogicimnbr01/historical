@@ -8,6 +8,9 @@ import os
 import boto3  # pyre-ignore[21]
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, List
+from utils.analytics_score import calculate_virality_score  # pyre-ignore[21]
+
+import sys
 
 # Google API client (installed via Lambda layer)
 try:
@@ -297,8 +300,11 @@ def update_with_actual_metrics(video_id: str, metrics: Dict, region_name: Option
         
         table.update_item(
             Key={"video_id": video_id},
-            UpdateExpression="SET actual_retention = :ar, views = :v, avg_duration_s = :ad, analytics_fetched_at_utc = :fd, #st = :s",
-            ExpressionAttributeNames={"#st": "status"},
+            UpdateExpression="SET actual_retention = :ar, #v = :v, avg_duration_s = :ad, analytics_fetched_at_utc = :fd, #st = :s",
+            ExpressionAttributeNames={
+                "#st": "status",
+                "#v": "views"
+            },
             ExpressionAttributeValues={
                 ":ar": str(actual_retention),
                 ":v": str(metrics.get("views", 0)),
@@ -463,6 +469,7 @@ def fetch_all_pending_metrics(region_name: Optional[str] = None) -> Dict:
     - >72 hours with no_data: Mark as failed (give up)
     """
     results = {"success": 0, "failed": 0, "skipped": 0, "retry_later": 0}
+    processed_metrics = []  # Store metrics for Real Score calculation
     
     try:
         youtube_analytics, youtube_data = build_youtube_client(region_name)
@@ -522,6 +529,7 @@ def fetch_all_pending_metrics(region_name: Optional[str] = None) -> Dict:
             update_with_actual_metrics(video_id, metrics, region_name)
             print(f"[SUCCESS] {video_id} - actual_retention: {metrics.get('avg_view_percentage', 0):.1f}%")
             results["success"] += 1
+            processed_metrics.append(metrics)
         elif metrics.get("error") == "no_data":
             # No data yet - check if we should retry or give up
             if hours_old < 72:
@@ -540,6 +548,23 @@ def fetch_all_pending_metrics(region_name: Optional[str] = None) -> Dict:
             results["failed"] += 1
     
     print(f"[SUMMARY] success={results['success']}, failed={results['failed']}, skipped={results['skipped']}, retry_later={results['retry_later']}")
+    
+    # Calculate Real Score for this batch
+    if processed_metrics:
+        print("\n🔎 VIRALITY SCORE (Batch Result):")
+        calculate_virality_score(processed_metrics[0] if processed_metrics else {})
+        # Note: calculate_virality_score prints inside it? No, it returns a float.
+        # And it expects a SINGLE video dict.
+        # We need to aggregate here too if we want a batch score?
+        # Or just print average virality score?
+        
+        total_v_score = 0
+        for m in processed_metrics:
+            total_v_score += calculate_virality_score(m)
+        
+        avg_v_score = total_v_score / len(processed_metrics)
+        print(f"📊 Average Virality Score: {avg_v_score:.1f}")
+        
     return {"results": results}
 
 

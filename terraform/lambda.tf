@@ -57,23 +57,42 @@ resource "aws_s3_object" "ffmpeg_layer" {
   etag   = filemd5("${path.module}/../lambda/layer/ffmpeg-layer.zip")
 }
 
-# Python dependencies layer
+# Common Python dependencies layer (requests, pydantic, etc.)
 resource "aws_lambda_layer_version" "python_deps" {
-  layer_name          = "python-deps-layer"
-  description         = "Python dependencies: requests"
+  layer_name          = "python-common-layer"
+  description         = "Common Python dependencies: requests, pydantic"
   compatible_runtimes = ["python3.11"]
 
   s3_bucket = aws_s3_bucket.videos.id
-  s3_key    = "layers/python-deps.zip"
+  s3_key    = "layers/python-common.zip"
 
   depends_on = [aws_s3_object.python_deps]
 }
 
 resource "aws_s3_object" "python_deps" {
   bucket = aws_s3_bucket.videos.id
-  key    = "layers/python-deps.zip"
-  source = "${path.module}/../lambda/layer/python-deps.zip"
-  etag   = filemd5("${path.module}/../lambda/layer/python-deps.zip")
+  key    = "layers/python-common.zip"
+  source = "${path.module}/../lambda/layer/python-common.zip"
+  etag   = filemd5("${path.module}/../lambda/layer/python-common.zip")
+}
+
+# Google API dependencies layer (google-api-python-client, auth, etc.)
+resource "aws_lambda_layer_version" "google_deps" {
+  layer_name          = "python-google-layer"
+  description         = "Google API Client libraries"
+  compatible_runtimes = ["python3.11"]
+
+  s3_bucket = aws_s3_bucket.videos.id
+  s3_key    = "layers/python-google.zip"
+
+  depends_on = [aws_s3_object.google_deps]
+}
+
+resource "aws_s3_object" "google_deps" {
+  bucket = aws_s3_bucket.videos.id
+  key    = "layers/python-google.zip"
+  source = "${path.module}/../lambda/layer/python-google.zip"
+  etag   = filemd5("${path.module}/../lambda/layer/python-google.zip")
 }
 
 # Package Lambda code

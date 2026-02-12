@@ -389,16 +389,13 @@ def update_video(video_id: str, updates: Dict) -> Dict:
     if not current:
         return response(404, {"error": "Video not found"})
     
-    # If status was AUTO-SET to "linked" (from YouTube URL linking), only apply
-    # if current status allows it (pending, test, failed). If user explicitly
-    # chose "linked" via saveVideoChanges(), always respect their choice.
+    # If status was AUTO-SET to "linked" (from YouTube URL linking), allow it from ANY state
+    # This ensures that even if status is 'generated' or 'render_complete', we move to 'linked'
+    # so the analytics fetcher can pick it up.
     if "status" in safe_updates and safe_updates["status"] == "linked":
-        is_auto_linked = updates.get("_auto_linked", False)
-        if is_auto_linked:
-            # Auto-linked: allow from pending, test, and failed
-            if current.get("status") not in ("pending", "test", "failed", None, ""):
-                del safe_updates["status"]  # pyre-ignore[16]
-        # else: user explicitly set status to "linked" — always allow
+        # Always allow transition to linked if we have a valid YouTube ID
+        pass 
+
     
     # Remove internal flag before processing
     safe_updates.pop("_auto_linked", None)

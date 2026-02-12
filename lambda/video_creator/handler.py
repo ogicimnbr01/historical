@@ -13,10 +13,11 @@ import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, List, Dict, Any, cast
 
 from script_gen import generate_history_script, SAMPLE_TOPICS  # pyre-ignore[21]
 from script_pipeline import generate_script_with_fallback  # pyre-ignore[21]
+from topic_selector import select_next_topic  # pyre-ignore[21]
 from difflib import SequenceMatcher
 
 METRICS_TABLE_NAME = os.environ.get('METRICS_TABLE_NAME', 'shorts_video_metrics')
@@ -413,7 +414,8 @@ def lambda_handler(event, context):
         # TOPIC SELECTION & RETRY LOOP
         # =====================================================================
         past_topics = get_recent_video_topics(limit=50, region_name=region)
-        failed_topics_session = []
+        processed_videos = []
+        failed_topics_accumulator = []
         script = None
         
         # Max retries for "Burn After Reading" strategy
@@ -430,30 +432,32 @@ def lambda_handler(event, context):
                 # User provided topic - use it (no retry on topic, just script)
                 selected_topic = topic_input
                 selected_era = era_input
+                selected_category = event.get('category', 'manual') # User can provide category or default to manual
                 logger.info(f"📜 [Attempt {current_try}/{max_retries}] Using user topic: {selected_topic}")
             else:
-                # Random Mode - Find a fresh topic
-                # Try up to 10 times to find a non-similar topic
-                for _ in range(10):
-                    topic_data = select_random_topic_data()
-                    candidate = topic_data.get('topic')
-                    
-                    # Check against history AND session failures
-                    if is_similar(candidate, past_topics + failed_topics_session):
-                        continue
-                        
-                    selected_topic = candidate
-                    selected_era = topic_data.get('era', 'early_20th')
-                    break
+                # GLOBAL STRATEGY: Use History Buffet Selector
+                # Get last video's category to force diversity
+                last_category = None
+                if past_topics:
+                    # Try to find last category from DB (not efficient but okay for now)
+                    # For now just pass None, diversity check will still work against past topics list
+                    pass
+                 
+                # Get category weights from autopilot
+                category_weights = cast(Dict[str, Any], autopilot_config).get('category_weights')
                 
-                if not selected_topic:
-                    # Fallback if we can't find unique
-                    topic_data = select_random_topic_data()
-                    selected_topic = topic_data.get('topic')
-                    selected_era = topic_data.get('era', 'early_20th')
-                    logger.warning("⚠️ Could not find unique topic, using random fallback")
+                # Select Topic
+                safe_past_topics = cast(List[str], past_topics) if past_topics else []
+                topic_data, selected_category = select_next_topic(
+                    past_topics=[*safe_past_topics, *failed_topics_accumulator],
+                    category_weights=category_weights,
+                    last_category=None # we could fetch this if we stored it separately
+                )
                 
-                logger.info(f"📜 [Attempt {current_try}/{max_retries}] Selected random topic: {selected_topic}")
+                selected_topic = topic_data['topic']
+                selected_era = topic_data['era']
+                
+                logger.info(f"📜 [Attempt {current_try}/{max_retries}] Selected topic: {selected_topic} (Category: {selected_category})")
 
             # 2. Generate Script
             logger.info(f"🔧 Pipeline mode: {'NEW (v2.0)' if use_pipeline else 'LEGACY (v1.0)'}")
@@ -492,17 +496,18 @@ def lambda_handler(event, context):
                     real_failure = False
 
                 if real_failure:
-                    logger.warning(f"⚠️ Attempt {current_try} failed: Pipeline fell back to legacy. Retrying with new topic...")
-                    failed_topics_session.append(selected_topic)
-                    continue
-                
+                    logger.warning(f"❌ Topic '{selected_topic}' failed generation (Attempt {current_try}/{max_retries}). Retrying pipeline...")
+                    if selected_topic:
+                        failed_topics_accumulator.append(selected_topic)  # type: ignore
+                    continue               
                 # If we got here, it's good
                 script = script_result
                 break
                 
             except Exception as e:
                 logger.error(f"❌ Attempt {current_try} error: {e}")
-                failed_topics_session.append(selected_topic)
+                if selected_topic:
+                    failed_topics_accumulator.append(selected_topic)  # type: ignore
                 # If last attempt, raise
                 if current_try == max_retries:
                     raise e
@@ -663,6 +668,10 @@ def lambda_handler(event, context):
                 hook_family = script.get('autopilot_hook_family', 'unknown')
                 autopilot_config_version = script.get('autopilot_config_version', 0)
                 
+                # Use category from selection (or manual)
+                # Ensure we save the category so decision engine can find it
+                final_category = selected_category if 'selected_category' in locals() else 'unknown'
+                
                 # Use timestamp-based ID (will be updated with YouTube ID after upload)
                 internal_video_id = f"pending_{timestamp}"
                 publish_time = datetime.now().isoformat()
@@ -688,7 +697,20 @@ def lambda_handler(event, context):
                     autopilot_config_version=autopilot_config_version,
                     region_name=region
                 )
-                logger.info(f"[CALIBRATION] Saved: {pipeline_executed} | mode={pipeline_mode} | hook_family={hook_family} | config_v={autopilot_config_version}")
+                
+                # Update with category (using update_item since save_video doesn't have it yet)
+                # We need to add 'category' to the item
+                try:
+                    metrics_table = boto3.resource('dynamodb', region_name=region).Table(METRICS_TABLE_NAME)
+                    metrics_table.update_item(
+                        Key={'video_id': internal_video_id},
+                        UpdateExpression="SET category = :c",
+                        ExpressionAttributeValues={':c': final_category}
+                    )
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to save category tag: {e}")
+
+                logger.info(f"[CALIBRATION] Saved: {pipeline_executed} | mode={pipeline_mode} | hook_family={hook_family} | category={final_category}")
             except Exception as e:
                 logger.warning(f"[WARNING] Failed to save video metrics: {e}")
         

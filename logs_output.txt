@@ -1,0 +1,20 @@
+1770843092052 - [SUCCESS] pending_2026-02-09_19-49-24 - actual_retention: 88.8%
+1770843092052 - [FETCH] pending_2026-02-05_11-42-55 -> YouTube ID: Z3LDmF2n7-k (153.1h old)
+1770843092277 - ❌ Failed to update video metrics: An error occurred (ValidationException) when calling the UpdateItem operation: Invalid UpdateExpression: Attribute name is a reserved keyword; reserved keyword: views
+1770843092278 - [SUCCESS] pending_2026-02-05_11-42-55 - actual_retention: 75.9%
+1770843092278 - [FETCH] pending_2026-02-10_13-34-48 -> YouTube ID: QqILYifl5wU (31.3h old)
+1770843092391 - [RETRY] pending_2026-02-10_13-34-48 - no data yet (31.3h old, retry #1)
+1770843092469 - [FETCH] pending_2026-02-05_11-45-15 -> YouTube ID: wzfzXgjx8sY (153.1h old)
+1770843092678 - ❌ Failed to update video metrics: An error occurred (ValidationException) when calling the UpdateItem operation: Invalid UpdateExpression: Attribute name is a reserved keyword; reserved keyword: views
+1770843092679 - [SUCCESS] pending_2026-02-05_11-45-15 - actual_retention: 67.8%
+1770843092679 - [SKIP] pending_2026-02-11_19-19-29 - only 1.5 hours old (need 24+)
+1770843092679 - [FETCH] pending_2026-02-05_11-47-16 -> YouTube ID: uKAMCljRzEs (153.1h old)
+1770843092906 - ❌ Failed to update video metrics: An error occurred (ValidationException) when calling the UpdateItem operation: Invalid UpdateExpression: Attribute name is a reserved keyword; reserved keyword: views
+1770843092907 - [SUCCESS] pending_2026-02-05_11-47-16 - actual_retention: 65.0%
+1770843092907 - [FETCH] pending_2026-02-08_16-57-24 -> YouTube ID: vjrZ34jhBXU (75.9h old)
+1770843093096 - ❌ Failed to update video metrics: An error occurred (ValidationException) when calling the UpdateItem operation: Invalid UpdateExpression: Attribute name is a reserved keyword; reserved keyword: views
+1770843093097 - [SUCCESS] pending_2026-02-08_16-57-24 - actual_retention: 72.7%
+1770843093097 - [SUMMARY] success=5, failed=0, skipped=1, retry_later=1
+1770843093097 - 📊 Results: {"results": {"success": 5, "failed": 0, "skipped": 1, "retry_later": 1}}
+1770843093099 - END RequestId: 4d845812-cc19-4655-b818-8572ebf40512
+1770843093099 - REPORT RequestId: 4d845812-cc19-4655-b818-8572ebf40512	Duration: 2292.38 ms	Billed Duration: 3201 ms	Memory Size: 512 MB	Max Memory Used: 125 MB	Init Duration: 907.67 ms	

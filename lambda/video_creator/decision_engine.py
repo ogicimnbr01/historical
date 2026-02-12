@@ -18,6 +18,8 @@ import boto3  # pyre-ignore[21]
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Dict, List, Tuple, Optional
+from utils.analytics_score import calculate_virality_score  # pyre-ignore[21]
+from topic_selector import TOPIC_BUCKETS  # pyre-ignore[21]
 
 
 # Configuration
@@ -100,7 +102,9 @@ def get_default_config() -> Dict:
     return {
         "video_id": "autopilot_config",
         "mode_weights": {"QUALITY": 0.7, "FAST": 0.3},
+        "mode_weights": {"QUALITY": 0.7, "FAST": 0.3},
         "title_weights": {"bold": 0.5, "safe": 0.3, "experimental": 0.2},
+        "category_weights": {k: v["weight"] for k, v in TOPIC_BUCKETS.items()},  # Default from selector
         "hook_family_weights": {
             "contradiction": 0.3,
             "revelation": 0.25,
@@ -432,9 +436,70 @@ def run_decision_engine(region_name: Optional[str] = None) -> Dict:
     bandit_state = config.get("bandit_state", {})
     old_mode_weights = dict(config.get("mode_weights", {}))
     old_title_weights = dict(config.get("title_weights", {}))
+    bandit_state = config.get("bandit_state", {})
+    old_mode_weights = dict(config.get("mode_weights", {}))
+    old_title_weights = dict(config.get("title_weights", {}))
+    old_category_weights = dict(config.get("category_weights", {k: v["weight"] for k, v in TOPIC_BUCKETS.items()}))
     old_hook_weights = dict(config.get("hook_family_weights", {}))
     
-    # Process each video
+    # --- 1. CATEGORY CALIBRATION (The "Real Score" Check) ---
+    # Group videos by category and calculate real score
+    category_videos = {}
+    for v in all_videos: # Use full history for stability
+        cat = v.get("era_category", v.get("category", "unknown")) # Support legacy
+        if cat not in category_videos: category_videos[cat] = []
+        category_videos[cat].append(v)
+        
+    # Explicitly type the dictionary to avoid narrow inference violations
+    old_cats: Dict[str, float] = {}
+    for k, v in old_category_weights.items():
+        if isinstance(v, (int, float)):
+             old_cats[k] = float(v)
+             
+    new_category_weights: Dict[str, float] = old_cats.copy()
+    category_changes_log = []
+    
+    for cat, videos in category_videos.items():
+        if cat not in new_category_weights: continue
+        
+        # USE VIRALITY SCORE (Retention * 1.5 + Stopping Power * 2.0)
+        virality_score = calculate_virality_score(videos[0] if videos else {}) 
+        # Note: calculate_virality_score expects a single video dict, but here we might want average?
+        # The previous calculate_real_score took a LIST. 
+        # Let's adjust calculate_virality_score to take a list or handle it here.
+        # Actually, let's look at analytics_score.py again. 
+        # It takes a single Dict. We need to aggregate.
+        
+        # Aggregate metrics for the category (using sum for cleaner type inference)
+        # s_val calculation needs to be safe
+        valid_videos = [v for v in videos if int(v.get('views', 0)) > 100]
+        
+        cat_total_score = sum(float(calculate_virality_score(v)) * float(int(v.get('views', 0))) for v in valid_videos)
+        cat_total_weight = sum(float(int(v.get('views', 0))) for v in valid_videos)
+        
+        avg_score = cat_total_score / cat_total_weight if cat_total_weight > 0.0 else 0.0
+        
+        cat_key = str(cat)
+        if avg_score > 35.0:
+            # BOOST
+            if avg_score > 500:
+                 current_weight = float(new_category_weights.get(cat_key, 0.2))
+                 new_category_weights[cat_key] = min(0.6, current_weight + 0.05)
+                 category_changes_log.append(f"🚀 BOOST {cat_key}: Score {avg_score:.0f} -> +5%")
+            # NERF
+            elif avg_score < 250 and avg_score > 0:
+                 current_weight = float(new_category_weights.get(cat_key, 0.2))
+                 new_category_weights[cat_key] = max(0.1, current_weight - 0.05)
+                 category_changes_log.append(f"📉 NERF {cat_key}: Score {avg_score:.0f} -> -5%")
+            else:
+                 category_changes_log.append(f"⚖️ KEEP {cat_key}: Score {avg_score:.0f}")
+                 
+    # Normalize category weights
+    total_cat_weight = sum(new_category_weights.values())
+    if total_cat_weight > 0:
+        new_category_weights = {k: float(v) / float(total_cat_weight) for k, v in new_category_weights.items()}
+
+    # --- 2. BANDIT UPDATE FOR MODES & TITLES ---
     for video in videos_for_update:
         try:
             actual = float(video.get("actual_retention", 0))
@@ -479,6 +544,10 @@ def run_decision_engine(region_name: Optional[str] = None) -> Dict:
     if new_title_weights != old_title_weights:
         changes["title_weights"] = {"old": old_title_weights, "new": new_title_weights}
         config["title_weights"] = new_title_weights
+
+    if new_category_weights != old_category_weights:
+        changes["category_weights"] = {"old": old_category_weights, "new": new_category_weights}
+        config["category_weights"] = new_category_weights
     
     # Save updated config
     if changes:
@@ -526,7 +595,11 @@ def send_update_notification(changes: Dict, n_videos: int, region_name: Optional
             new_val = new.get(key, 0)
             if old_val != new_val:
                 direction = "↑" if new_val > old_val else "↓"
+                direction = "↑" if new_val > old_val else "↓"
                 change_lines.append(f"   • {category}/{key}: {old_val:.0%} → {new_val:.0%} {direction}")
+    
+    # Add category specific logs if any
+    # (We could pass category_changes_log here but for now just show weights)
     
     message = f"""🤖 AUTOPILOT GÜNCELLEMESI
 

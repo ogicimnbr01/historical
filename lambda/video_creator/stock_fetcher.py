@@ -19,27 +19,38 @@ from typing import List, Tuple, Optional
 from copyright_safety import get_copyright_tracker, reset_copyright_tracker  # pyre-ignore[21]
 
 
+
 # Global counter for unique file names
 _fallback_counter = 0
 
-# Era-specific prompt suffixes for authentic historical look
-# Ancient/Medieval: Oil painting style (no grain - cameras didn't exist)
-# 19th century onwards: Photograph style with appropriate grain
-ERA_STYLE_SUFFIXES = {
-    "ancient": ", classical oil painting on canvas, ancient world artistic style, marble and bronze aesthetic, dramatic chiaroscuro lighting, museum masterpiece quality",
-    "medieval": ", medieval oil painting on canvas texture, castle and knight era, rich colors, dramatic shadows, illuminated manuscript style",
-    "ottoman": ", Ottoman oriental painting style, oil on canvas, Islamic geometric patterns, palace interior aesthetic, golden warm tones, miniature painting influence",
-    "renaissance": ", Renaissance masterpiece oil painting, canvas texture visible, European court aesthetic, chiaroscuro lighting, museum quality",
-    "18th_century": ", 18th century portrait oil painting, canvas texture, colonial era, classical composition, formal dignified",
-    "19th_century": ", vintage 19th century photograph style, sepia toned, Victorian era, slightly faded, subtle film grain",
-    "early_20th": ", 1920s-1940s black and white vintage photograph, film grain texture, slightly noisy, historical archive look",
-    "ww1": ", World War I era photograph, grainy black and white, war documentary style, dramatic, film grain",
-    "ww2": ", World War II era photograph, black and white film grain, military documentary style, noisy film",
-    "modern": ", mid-20th century color photograph, vintage film look, 1950s-1970s aesthetic, slight color fade"
+# ============================================================================
+# VISUAL DIRECTOR CONFIGURATION (The "Lens")
+# ============================================================================
+
+# 1. GLOBAL STYLE (The Visual Signature)
+# User request: "Cinematic historical illustration, dark fantasy graphic novel art style"
+GLOBAL_STYLE = "cinematic historical illustration, dark fantasy graphic novel art style, Highly detailed, atmospheric, richly textured, sharp focus"
+
+# 2. ERA VISUALS (Context Layer)
+ERA_VISUALS = {
+    "ottoman": "15th century Ottoman period setting, ornate armor, turbans, huge cannons (bombards), eastern architecture, minarets",
+    "roman": "Ancient Roman Empire setting, legionary armor gladius and scutum, marble columns, red tunics, sprawling ancient city",
+    "viking": "Viking age setting, rugged norsemen, chainmail, axes, longships, wooden halls, cold foggy landscapes",
+    "medieval": "Dark medieval Europe setting, knights in plate armor, castles, heraldry banners, muddy battlefields",
+    "ww2": "World War 2 setting, 1940s military gear, tanks, trenches, gritty war photography style",
+    "ancient": "Ancient world setting, stone temples, bronze weapons, primitive fabrics, epic scale",
+    "renaissance": "Renaissance period setting, elaborate clothing, artistic architecture, rapier swords, vibrant colors",
+    "early_20th": "Early 20th century setting, vintage cars, fedora hats, trench coats, black and white photography style",
+    "ww1": "World War 1 setting, muddy trenches, gas masks, biplanes, desolate battlefields, gritty realism",
+    "modern": "Mid-20th century retro setting, vintage tech, cold war aesthetic, neon signs, film noir style",
+    "anthropology_and_culture": "Cultural ritual setting, indigenous attire, ceremonial objects, detailed textures, national geographic style",
 }
 
-# Default archive style suffix (for unspecified eras)
-DEFAULT_ARCHIVE_STYLE = ", vintage archive photograph style, historical, dramatic lighting, photorealistic, slightly aged look"
+# 3. MOOD (Lighting & Atmosphere)
+MOOD_LIGHTING = "dramatic lighting, volumetric fog, tense atmosphere, cinematic shot"
+
+# NEGATIVE PROMPT (What to avoid)
+NEGATIVE_PROMPT = "blurry, low quality, modern elements, text, watermark, ugly faces, deformed hands, cartoonish, distorted features"
 
 # Known historical figures that need face-avoidance to prevent AI hallucination
 FACE_AVOIDANCE_FIGURES = [
@@ -169,41 +180,117 @@ def sanitize_prompt_for_titan(prompt: str) -> str:
     return sanitized
 
 
+def clean_text_for_visuals(text: str) -> str:
+    """
+    Clean script text for visual generation.
+    Removes:
+    - Parentheses (direction)
+    - Brackets [sound effects]
+    - Script artifacts "Scene 1", "Narrator:", "Cut to"
+    """
+    import re
+    
+    # Remove "Scene X", "Narrator:", "Host:"
+    text = re.sub(r'Scene \d+.*?:', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'(Narrator|Host|Speaker):', '', text, flags=re.IGNORECASE)
+    
+    # Remove directions like "Cut to", "Fade in"
+    text = re.sub(r'(Cut|Fade|Dissolve) to.*?(?=\.|$)', '', text, flags=re.IGNORECASE)
+    
+    # Remove parenthetical notes (...) and brackets [...]
+    text = re.sub(r'\([^)]*\)', '', text)
+    text = re.sub(r'\[[^\]]*\]', '', text)
+    
+    # Remove special chars but keep punctuation
+    text = re.sub(r'[^a-zA-Z0-9\s,.\'-]', '', text)
+    
+    # Collapse whitespace
+    text = ' '.join(text.split())
+    
+    return text.strip()
+
+
+def generate_cinematic_prompt(sentence_text: str, era_tag: str) -> str:
+    """
+    Construct the 4-Layer Cinematic Prompt.
+    Layers: Global Style + Era Context + Action (The Shot) + Mood
+    """
+    # 1. Clean the action text
+    cleaned_action = clean_text_for_visuals(sentence_text)
+    if len(cleaned_action) < 10:
+        cleaned_action = "historical scene, dramatic moment" # Fallback
+        
+    # 2. Get Era Context
+    era_context = ERA_VISUALS.get(era_tag.lower(), "historical setting, period appropriate attire")
+    
+    # 3. Construct Prompt
+    final_prompt = (
+        f"{GLOBAL_STYLE}, "
+        f"{era_context}, "
+        f"a scene showing {cleaned_action}, "
+        f"{MOOD_LIGHTING} "
+        f"--no {NEGATIVE_PROMPT}"
+    )
+    
+    return final_prompt
+
+
 def enhance_prompt_for_era(prompt: str, era: Optional[str] = None, mood: Optional[str] = None) -> str:
     """
-    Enhance an image prompt with era-appropriate styling
-    Uses comprehensive titan_sanitizer module for safety
+    Enhance an image prompt with Visual Director logic + Titan Safety.
     
     Args:
-        prompt: Base image generation prompt
-        era: Historical era for styling (ancient, medieval, ottoman, etc.)
-        mood: Content mood (epic, nostalgic, emotional, etc.)
+        prompt: Base script text or description
+        era: Historical era tag
+        mood: (Ignored in new logic, used MOOD_LIGHTING constant)
         
     Returns:
-        Enhanced prompt with era-specific styling, fully sanitized for Titan
+        Enhanced 4-layer cinematic prompt, fully sanitized.
     """
-    # Use comprehensive Titan sanitizer
+    import itertools # Import itertools for islice
+    
+    # 1. Generate the Cinematic Prompt using Visual Director logic
+    # Truncate the initial prompt if too long before processing
+    if len(prompt) > 480:
+         prompt = "".join(itertools.islice(str(prompt), 480))
+    cinematic_prompt = generate_cinematic_prompt(prompt, era or "medieval")
+    
+    # 2. Apply Titan Safety Checks (Manually orchestrated to preserve our style)
     try:
-        from titan_sanitizer import full_sanitize, add_face_avoidance  # pyre-ignore[21]
+        from titan_sanitizer import replace_figure_with_description, sanitize_prompt, add_face_avoidance # pyre-ignore[21]
         
-        # Full sanitization pipeline with mood-based art style
-        era_str = era or "medieval"
-        mood_str = mood or "epic"
-        prompt = full_sanitize(prompt, era_str, mood_str)
-        prompt = add_face_avoidance(prompt)
+        print(f"🎬 Visual Director: Enhancing '{"".join(itertools.islice(prompt, 30))}...' -> Era: {era}")
+        
+        # Step A: Replace names with descriptions (Crucial for bypass)
+        safe_prompt, _, _ = replace_figure_with_description(cinematic_prompt)
+        
+        # Step B: Sanitize violence/hate speech
+        safe_prompt, _, _ = sanitize_prompt(safe_prompt)
+        
+        # Step C: Face avoidance for historical figures
+        safe_prompt = add_face_avoidance(safe_prompt)
+        
+        # Step D: Truncate if necessary (leaving room for styles)
+        import itertools
+        s_prompt = str(safe_prompt)
+        if len(s_prompt) > 480:
+            safe_prompt = "".join(itertools.islice(s_prompt, 480))
+            
+        final_prompt = safe_prompt
         
     except ImportError:
-        # Fallback to local sanitization if module not available
-        print("⚠️ titan_sanitizer not found, using local sanitization")
-        prompt = sanitize_prompt_for_titan(prompt)
+        # Fallback to local sanitization if safe components missing
+        print("⚠️ titan_sanitizer not found, using local fallback")
+        final_prompt = sanitize_prompt_for_titan(cinematic_prompt)
+        if len(final_prompt) > 480: final_prompt = "".join(itertools.islice(final_prompt, 480))
+
+    # Ensure vertical aspect ratio (Titan V2 parameter, but good to have in prompt too)
+    if "vertical" not in final_prompt.lower():
+         final_prompt += ", 9:16 vertical composition"
     
-    # Ensure 9:16 vertical composition for Shorts
-    if "9:16" not in prompt.lower() and "vertical" not in prompt.lower():
-        prompt += ", 9:16 vertical composition"
+    print(f"🎨 Final Visual Director Prompt: {"".join(itertools.islice(final_prompt, 100))}...")
     
-    print(f"🎨 Final prompt for era '{era}' mood '{mood}': {prompt[:100]}...")  # pyre-ignore[16]
-    
-    return prompt
+    return final_prompt
 
 
 def fetch_videos_by_segments(segments: List[dict], era: Optional[str] = None, api_key: Optional[str] = None) -> List[str]:
