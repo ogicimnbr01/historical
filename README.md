@@ -4,26 +4,35 @@
 
 Tarihsel içerikler için AI destekli video üretimi yapar. Senaryo yazımından video render'ına, kalite skorlamasından YouTube Analytics takibine kadar tüm süreç otomatiktir. **Thompson Sampling** tabanlı autopilot sistemi ile parametreler gerçek YouTube performansına göre sürekli optimize edilir.
 
+### 🆕 Son Güncellemeler (v2.0 - Media Mogul)
+- **🎯 History Buffet**: 6 kategorili akıllı konu seçim stratejisi (Forced Diversity)
+- **📊 Virality Score**: Retention × 1.5 + Stopping Power × 2.0 (Like'lar artık yok sayılıyor)
+- **🎬 Visual Director**: 4 katmanlı sinematik prompt sistemi (Global Style → Era → Action → Mood)
+- **🌍 Antropoloji & Kültür**: Yeni kategori — Aztek Ölüm Düdüğü, Tibet Gökyüzü Cenazesi, Viking Blood Eagle
+- **🧠 Kategori Feedback Loop**: Başarılı kategorilerin ağırlığı otomatik artırılır
+
 ---
 
 ## 📋 İçindekiler
 
 1. [Sistem Genel Bakış](#-sistem-genel-bakış)
 2. [Nasıl Çalışır?](#-nasıl-çalışır)
-3. [Senaryo Üretimi ve Puanlama](#-senaryo-üretimi-ve-puanlama)
-4. [Görsel Üretimi (Titan AI)](#-görsel-üretimi-titan-ai)
-5. [Ses Üretimi (AWS Polly)](#-ses-üretimi-aws-polly)
-6. [Müzik Sistemi](#-müzik-sistemi)
-7. [Video Kompozisyonu (FFmpeg)](#-video-kompozisyonu-ffmpeg)
-8. [Autopilot Sistemi](#-autopilot-sistemi)
-9. [YouTube Analytics Entegrasyonu](#-youtube-analytics-entegrasyonu)
-10. [İş Takibi (Job Tracking)](#-iş-takibi-job-tracking)
-11. [Admin Paneli](#-admin-paneli)
-12. [AWS Altyapısı](#-aws-altyapısı)
-13. [Kurulum](#-kurulum)
-14. [Dosya Yapısı](#-dosya-yapısı)
-15. [Konfigürasyon](#-konfigürasyon)
-16. [Sorun Giderme](#-sorun-giderme)
+3. [Konu Seçim Stratejisi (History Buffet)](#-konu-seçim-stratejisi-history-buffet)
+4. [Virality Score (Performans Puanlama)](#-virality-score-performans-puanlama)
+5. [Senaryo Üretimi ve Puanlama](#-senaryo-üretimi-ve-puanlama)
+6. [Görsel Üretimi (Visual Director)](#-görsel-üretimi-visual-director)
+7. [Ses Üretimi (AWS Polly)](#-ses-üretimi-aws-polly)
+8. [Müzik Sistemi](#-müzik-sistemi)
+9. [Video Kompozisyonu (FFmpeg)](#-video-kompozisyonu-ffmpeg)
+10. [Autopilot Sistemi](#-autopilot-sistemi)
+11. [YouTube Analytics Entegrasyonu](#-youtube-analytics-entegrasyonu)
+12. [İş Takibi (Job Tracking)](#-iş-takibi-job-tracking)
+13. [Admin Paneli](#-admin-paneli)
+14. [AWS Altyapısı](#-aws-altyapısı)
+15. [Kurulum](#-kurulum)
+16. [Dosya Yapısı](#-dosya-yapısı)
+17. [Konfigürasyon](#-konfigürasyon)
+18. [Sorun Giderme](#-sorun-giderme)
 
 ---
 
@@ -109,7 +118,9 @@ Bu sistem tamamen **serverless** (sunucusuz) bir mimaride çalışır:
    │  • Başlık varyantı seç (bold/safe/experimental)
    │
    ▼
-3. KONU SEÇ (rastgele tarihsel konu)
+3. KONU SEÇ (History Buffet stratejisi)
+   │  • 6 kategoriden ağırlıklı rastgele seçim
+   │  • Forced Diversity: Son kategori tekrar seçilemez
    │  • Similarity dampener ile tekrar kontrolü
    │
    ▼
@@ -172,6 +183,89 @@ Bu sistem tamamen **serverless** (sunucusuz) bir mimaride çalışır:
 
 ---
 
+## 🎯 Konu Seçim Stratejisi (History Buffet)
+
+### Dosya: `lambda/video_creator/topic_selector.py`
+
+Sistem artık rastgele konu seçmek yerine **stratejik bir içerik portföyü** yönetir. 6 kategoride 40+ konu arasından ağırlıklı seçim yapılır.
+
+### Kategori Dağılımı
+
+| Kategori | Ağırlık | Örnek Konular |
+|----------|---------|---------------|
+| 🔫 Modern Savaş | **30%** | Ghost Army, White Death, Manhattan Project |
+| 🏛️ Antik Çağ | **25%** | Spartalılar, Sezar'ın intikamı, Mansa Musa |
+| ⚔️ Ortaçağ | **20%** | Samurai vs Şövalye, Paris kuşatması, Cengiz Han |
+| 🔍 Gizem | **15%** | Korsan Kralı, Karıncalanma Vebası, Alcatraz |
+| 👑 Liderler | **10%** | Napoleon, Fatih Sultan Mehmet, İskender |
+| 🌍 Antropoloji & Kültür | **10%** | Aztek Ölüm Düdüğü, Tibet Gökyüzü Cenazesi, Viking Blood Eagle |
+
+### Forced Diversity (Zorunlu Çeşitlilik)
+
+```
+Son video: "Simo Häyhä" (modern_war)
+     │
+     ▼
+Sonraki seçim: modern_war HARİÇ tüm kategorilerden ağırlıklı seçim
+     │
+     ▼
+Seçilen: "Aztek Ölüm Düdüğü" (anthropology_and_culture) ✅
+```
+
+- **Aynı kategori asla arka arkaya gelmez**
+- Benzer konular `similarity_dampener` ile filtrelenir
+- Kategori ağırlıkları autopilot tarafından otomatik güncellenir
+
+### Antropoloji & Kültür Kategorisi 🌍
+
+Yüksek viral potansiyelli "insanlık hikayeleri"ne odaklanır:
+
+| Konu | Dönem | Neden Viral? |
+|------|-------|--------------|
+| Aztek Ölüm Düdüğü | Antik | Ses efekti + korku |
+| Tibet Gökyüzü Cenazesi | Modern | Şok + kültürel farklılık |
+| Sokushinbutsu (Öz-Mumyalama) | Ortaçağ | "İmkansız" insan iradesi |
+| Maori Haka Dansı | Modern | Güç + kültürel anlam |
+| Viking Blood Eagle | Ortaçağ | Karanlık tarih + tartışma |
+
+---
+
+## 📊 Virality Score (Performans Puanlama)
+
+### Dosya: `lambda/video_creator/utils/analytics_score.py`
+
+Geleneksel "Like sayısı" metriği artık **tamamen yok sayılır**. Yerine, YouTube algoritmasının gerçekten önemsediği iki metrik kullanılır:
+
+### Formül
+
+```
+Virality Score = (Retention × 1.5 + Stopping Power × 2.0) × log₁₀(Views)
+```
+
+| Bileşen | Açıklama | Ağırlık |
+|---------|----------|---------|
+| **Retention** | Ortalama izlenme yüzdesi (%) | ×1.5 |
+| **Stopping Power** | `(1.0 - Swipe Rate) × 100` | ×2.0 |
+| **Volume** | `log₁₀(Views)` — hacim çarpanı | ×1.0 |
+
+> **Not:** Minimum 100 view gerekir. Altındaki videolar 0 puan alır.
+
+### Örnek Hesaplamalar
+
+| Video Tipi | Retention | Swipe Rate | Views | Skor |
+|------------|-----------|------------|-------|------|
+| 🔥 Viral Hit | %80 | %30 | 10,000 | **~1,040** |
+| 💎 Niche Gem | %95 | %10 | 1,000 | **~700** |
+| 💀 Clickbait | %30 | %60 | 50,000 | **~587** |
+
+### Neden Like'ları Yok Sayıyoruz?
+
+- Like **pasif** — kullanıcı zaten izlemiş, "iyi" diyor ama algoritma umursamıyor
+- Retention = videonun **gerçek gücü** — insanlar gerçekten izliyor mu?
+- Stopping Power = hook'un **gerçek etkisi** — kaydırmayı durduruyor mu?
+
+---
+
 ## 📝 Senaryo Üretimi ve Puanlama
 
 ### Dosya: `lambda/video_creator/script_pipeline.py`
@@ -225,47 +319,65 @@ Gerçek YouTube performansını tahmin eden metrikler:
 
 ---
 
-## 🎨 Görsel Üretimi (Titan AI)
+## 🎬 Görsel Üretimi (Visual Director)
 
 ### Dosya: `lambda/video_creator/stock_fetcher.py`
 
-AWS Bedrock Titan Image Generator kullanarak tarihi görseller üretir.
+AWS Bedrock Titan Image Generator kullanarak **sinematik tarihsel görseller** üretir. v2.0 ile prompt'lar artık 4 katmanlı bir yapıda oluşturulur.
+
+### 4 Katmanlı Prompt Mimarisi (Visual Director)
+
+```
+┌─────────────────────────────────────────────────┐
+│ 1. GLOBAL STYLE (Görsel İmza)                   │
+│    "cinematic historical illustration,           │
+│     dark fantasy graphic novel art style"        │
+├─────────────────────────────────────────────────┤
+│ 2. ERA CONTEXT (Dönem Bağlamı)                  │
+│    "15th century Ottoman period setting,         │
+│     ornate armor, turbans, huge cannons"         │
+├─────────────────────────────────────────────────┤
+│ 3. SCENE ACTION (Sahne)                          │
+│    "a scene showing young Ottoman sultan         │
+│     commanding troops before fortress walls"     │
+├─────────────────────────────────────────────────┤
+│ 4. MOOD (Atmosfer)                               │
+│    "dramatic lighting, volumetric fog,           │
+│     tense atmosphere, cinematic shot"            │
+└─────────────────────────────────────────────────┘
+```
+
+### Desteklenen Dönemler
+
+| Dönem | Görsel DNA |
+|-------|------------|
+| Ottoman | Ornate armor, minarets, bombards |
+| Roman | Legionary armor, marble columns |
+| Viking | Longships, chainmail, foggy landscapes |
+| Medieval | Knights, castles, heraldry banners |
+| WW2 | 1940s gear, tanks, gritty war photography |
+| Ancient | Stone temples, bronze weapons |
+| Anthropology | Indigenous attire, ceremonial objects, National Geographic style |
 
 ### Güvenlik Filtresi (Titan Sanitizer)
 
-AWS Titan bazı içerikleri engeller:
-- Şiddet/savaş sahneleri
-- Ünlü kişilerin yüzleri
-- Nefret söylemi
-
-Bu yüzden **titan_sanitizer.py** prompt'ları güvenli hale getirir:
+AWS Titan bazı içerikleri engeller. **titan_sanitizer.py** prompt'ları güvenli hale getirir:
 
 ```python
 # Örnek dönüşümler
 "war" → "soldiers in marching formation"
-"battle" → "heroic warrior stance"
 "Genghis Khan" → "13th century Mongol emperor in golden armor"
 "blood" → "crimson sunset"
 ```
 
-### Ken Burns Efekti
+**Yüz Kaçınma**: Tarihi figürlerin yüzleri yerine tanımlayıcı ifadeler kullanılır:
+- `"Mehmed II"` → `"young Ottoman ruler in golden armor"`
+- `"Napoleon"` → `"French military commander with bicorne hat"`
 
-Her görsel 8 saniyelik videoya dönüşür:
-- Yavaş zoom in/out
-- Hafif pan (yatay hareket)
-- Fade in başlangıç
-- Film grain efekti (dönemine göre)
+### Ken Burns Efekti + Fallback
 
-```python
-# stock_fetcher.py - Her klip 8 saniye üretilir
-'-t', '8',  # 8 second clip (supports voiceovers up to 32s with 4 clips)
-```
-
-### Fallback Sistemi
-
-Titan başarısız olursa:
-1. **Önceki başarılı görseli kullan** (varsa)
-2. **Gradient fallback** - dönemine uygun renk geçişi oluştur
+- Her görsel **8 saniyelik** videoya dönüşür (zoom/pan/fade)
+- Titan başarısız olursa: önceki başarılı görseli kullan veya gradient fallback oluştur
 
 ---
 
@@ -373,13 +485,15 @@ Thompson Sampling (Multi-Armed Bandit) algoritması ile şu parametrelerin ağı
 | Mode            | QUALITY (0.3-0.9), FAST (0.1-0.5)           |
 | Title Variant   | bold, safe, experimental                      |
 | Hook Family     | contradiction, shock, mystery, question, challenge, contrast |
+| **🆕 Category** | modern_war, ancient, medieval, mystery, leaders, anthropology |
 
 **Ağırlık güncelleme süreci:**
-1. Tamamlanmış videoların gerçek retention değerlerini al
+1. Tamamlanmış videoların **Virality Score**'unu hesapla
 2. Reward hesapla (winsorization + decay weighting)
 3. Beta distribution'ları güncelle (Thompson Sampling)
 4. Softmax ile yeni ağırlıklar hesapla
 5. Safety bounds uygula (günlük max %15 değişim)
+6. 🆕 **Kategori ağırlıklarını güncelle** (Skor > 500 → Boost +5%, Skor < 250 → Nerf -5%)
 
 **Decay Weights (eski veriye azalan ağırlık):**
 
@@ -394,6 +508,7 @@ Thompson Sampling (Multi-Armed Bandit) algoritması ile şu parametrelerin ağı
 - **Recovery Mode:** Art arda 3 video retention < %25 ise otomatik QUALITY mode'a geçer
 - Günlük max ağırlık değişimi: %15
 - Safety bounds ile aşırı uçlara kayma engellenir
+- 🆕 Kategori ağırlıkları her zaman toplamda 1.0'a normalize edilir
 
 ### Prompt Memory
 
@@ -665,15 +780,12 @@ s3://bucket-name/music/loops/emotional_1.mp3
 ```
 historical/
 ├── README.md                    # Bu dosya
-├── ABOUT.md                     # Proje hakkında bilgi
 ├── setup.ps1                    # Windows setup script
 ├── setup.sh                     # Linux/Mac setup script
 ├── download_ffmpeg.py           # FFmpeg indirme yardımcısı
 ├── download_font.py             # Font indirme yardımcısı
 ├── get_youtube_token.py         # YouTube OAuth token alma
 ├── payload.json                 # Lambda test payload'u
-├── client_secret.json           # YouTube API client secret
-├── youtube_secret.json          # YouTube OAuth secret
 │
 ├── admin-panel/                 # Web admin paneli
 │   ├── index.html               # Ana sayfa
@@ -693,8 +805,9 @@ historical/
 │       ├── handler.py              # Ana Lambda handler (orchestrator + job tracking)
 │       ├── script_pipeline.py      # Senaryo + puanlama sistemi (iteratif)
 │       ├── script_gen.py           # Senaryo generator
-│       ├── stock_fetcher.py        # Titan AI görsel üretimi
-│       ├── titan_sanitizer.py      # Prompt güvenlik filtresi
+│       ├── topic_selector.py       # 🆕 History Buffet konu seçim stratejisi
+│       ├── stock_fetcher.py        # 🆕 Visual Director — 4 katmanlı sinematik prompt
+│       ├── titan_sanitizer.py      # Prompt güvenlik filtresi + yüz kaçınma
 │       ├── video_composer.py       # FFmpeg video birleştirme
 │       ├── tts.py                  # AWS Polly ses üretimi
 │       ├── subtitle_gen.py         # Altyazı oluşturma
@@ -702,13 +815,15 @@ historical/
 │       ├── smart_music_cutter.py   # Akıllı müzik kesimi
 │       ├── story_music_matcher.py  # Mood-müzik eşleştirme
 │       ├── sfx_generator.py        # Ses efektleri
-│       ├── decision_engine.py      # 🆕 Thompson Sampling autopilot
-│       ├── prompt_memory.py        # 🆕 Haftalık DO/DON'T güncelleme
-│       ├── weekly_report.py        # 🆕 Haftalık performans raporu
+│       ├── decision_engine.py      # Thompson Sampling autopilot + kategori feedback
+│       ├── prompt_memory.py        # Haftalık DO/DON'T güncelleme
+│       ├── weekly_report.py        # Haftalık performans raporu
 │       ├── youtube_analytics.py    # YouTube API entegrasyonu
 │       ├── metrics_correlator.py   # Tahmin-gerçek karşılaştırma
 │       ├── similarity_dampener.py  # Konu çeşitliliği kontrolü
 │       ├── copyright_safety.py     # Telif hakkı takibi
+│       ├── utils/
+│       │   └── analytics_score.py  # 🆕 Virality Score hesaplama
 │       ├── requirements.txt        # Python bağımlılıkları
 │       └── font.ttf                # Altyazı fontu
 │
@@ -716,12 +831,12 @@ historical/
 │   ├── main.tf                  # Provider, S3, SNS
 │   ├── lambda.tf                # Video Generator Lambda
 │   ├── analytics_lambda.tf      # Analytics Fetcher Lambda
-│   ├── autopilot_lambda.tf      # 🆕 Decision Engine + Prompt Memory
+│   ├── autopilot_lambda.tf      # Decision Engine + Prompt Memory
 │   ├── api_admin.tf             # API Gateway + Admin Lambda
-│   ├── api_generate.tf          # 🆕 Generate/Jobs/Logs API endpoints
+│   ├── api_generate.tf          # Generate/Jobs/Logs API endpoints
 │   ├── dynamodb_metrics.tf      # Video metrics tablosu
-│   ├── dynamodb_jobs.tf         # 🆕 Jobs + Run Logs + Rate Limits tabloları
-│   ├── s3_admin_panel.tf        # 🆕 CloudFront + S3 admin panel hosting
+│   ├── dynamodb_jobs.tf         # Jobs + Run Logs + Rate Limits tabloları
+│   ├── s3_admin_panel.tf        # CloudFront + S3 admin panel hosting
 │   ├── iam.tf                   # IAM rolleri ve politikaları
 │   ├── secrets.tf               # Secrets Manager referansları
 │   ├── variables.tf             # Terraform değişkenleri
@@ -730,7 +845,10 @@ historical/
 │   └── autopilot_seed.json      # Autopilot başlangıç konfigürasyonu
 │
 └── tests/                       # Test dosyaları
-    └── test_query_logic.py      # Query logic testleri
+    ├── test_virality_score.py      # 🆕 Virality Score testleri
+    ├── test_topic_selector.py      # 🆕 Konu seçim testleri
+    ├── test_visual_director.py     # 🆕 Visual Director testleri
+    └── test_query_logic.py         # Query logic testleri
 ```
 
 ---
@@ -835,4 +953,4 @@ Sorular için issue açabilirsiniz.
 
 ---
 
-*Son güncelleme: 2026-02-10*
+*Son güncelleme: 2026-02-12*
