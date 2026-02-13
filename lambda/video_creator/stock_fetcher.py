@@ -259,7 +259,8 @@ def enhance_prompt_for_era(prompt: str, era: Optional[str] = None, mood: Optiona
     try:
         from titan_sanitizer import replace_figure_with_description, sanitize_prompt, add_face_avoidance # pyre-ignore[21]
         
-        print(f"🎬 Visual Director: Enhancing '{"".join(itertools.islice(prompt, 30))}...' -> Era: {era}")
+        prompt_preview = prompt[:30] if len(prompt) > 30 else prompt  # pyre-ignore[6]
+        print(f"🎬 Visual Director: Enhancing '{prompt_preview}...' -> Era: {era}")
         
         # Step A: Replace names with descriptions (Crucial for bypass)
         safe_prompt, _, _ = replace_figure_with_description(cinematic_prompt)
