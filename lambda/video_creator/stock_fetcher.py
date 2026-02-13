@@ -289,7 +289,8 @@ def enhance_prompt_for_era(prompt: str, era: Optional[str] = None, mood: Optiona
     if "vertical" not in final_prompt.lower():
          final_prompt += ", 9:16 vertical composition"
     
-    print(f"🎨 Final Visual Director Prompt: {"".join(itertools.islice(final_prompt, 100))}...")
+    final_preview = final_prompt[:100]
+    print(f"🎨 Final Visual Director Prompt: {final_preview}...")
     
     return final_prompt
 
