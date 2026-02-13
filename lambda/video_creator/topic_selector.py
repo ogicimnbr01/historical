@@ -79,7 +79,8 @@ TOPIC_BUCKETS = {
 def select_next_topic(
     past_topics: List[str], 
     category_weights: Optional[Dict[str, float]] = None, 
-    last_category: Optional[str] = None
+    last_category: Optional[str] = None,
+    category_retention: Optional[Dict[str, float]] = None
 ) -> Tuple[Dict, str]:
     """
     Select the next topic based on weighted categories and forced diversity.
@@ -88,10 +89,14 @@ def select_next_topic(
         past_topics: List of recently used topic strings (to avoid repeats)
         category_weights: Optional override for weights (from autopilot config)
         last_category: The category of the last generated video (to force switch)
+        category_retention: Optional dict of {category: avg_retention_pct}
+            If a category's avg retention >= RETENTION_WAVE_THRESHOLD, 
+            diversity blocking is skipped (wave surfing).
         
     Returns:
         Tuple[Dict, str]: (Selected topic data, Selected category name)
     """
+    RETENTION_WAVE_THRESHOLD = 55.0  # % — above this, let the wave ride
     
     # 1. SETUP WEIGHTS
     # Use provided weights or fall back to defaults defined in TOPIC_BUCKETS
@@ -106,14 +111,20 @@ def select_next_topic(
     else:
         weights = category_weights.copy()
     
-    # 2. FORCED DIVERSITY (The "No Repeat" Rule)
-    # If we just did a purely "Modern War" video, force a switch to something else.
+    # 2. FORCED DIVERSITY (The "No Repeat" Rule) — with retention override
     available_categories = list(weights.keys())
     
     if last_category and last_category in available_categories and len(available_categories) > 1:
-        print(f"🔄 Forced Diversity: Blocking '{last_category}' from selection.")
-        # Temporarily set weight to 0 for selection
-        weights[last_category] = 0.0
+        # Check if this category is on a hot streak (retention-aware diversity)
+        cat_retention = (category_retention or {}).get(last_category, 0.0)
+        
+        if cat_retention >= RETENTION_WAVE_THRESHOLD:
+            # 🏄 WAVE SURFING: Category is performing well, let it repeat
+            print(f"🏄 Wave Surfing: '{last_category}' avg retention {cat_retention:.1f}% >= {RETENTION_WAVE_THRESHOLD}% — allowing repeat!")
+        else:
+            # Normal diversity: block last category
+            print(f"🔄 Forced Diversity: Blocking '{last_category}' (retention {cat_retention:.1f}% < {RETENTION_WAVE_THRESHOLD}%).")
+            weights[last_category] = 0.0
         
     # Normalize weights after blocking
     total_weight = sum(weights.values())

@@ -423,7 +423,7 @@ def run_decision_engine(region_name: Optional[str] = None) -> Dict:
         result["message"] = f"Entered recovery mode after {CONSECUTIVE_FAIL_THRESHOLD} consecutive low performers"
         return result
     
-    # Check minimum data requirement
+    # Check minimum data requirement (24h window)
     if len(recent_videos) < MIN_VIDEOS_FOR_UPDATE and len(all_videos) < SLIDING_WINDOW_SIZE:
         result["action"] = "insufficient_data"
         result["message"] = f"Only {len(recent_videos)} videos in 24h (need {MIN_VIDEOS_FOR_UPDATE})"
@@ -431,6 +431,36 @@ def run_decision_engine(region_name: Optional[str] = None) -> Dict:
     
     # Use sliding window if not enough recent videos
     videos_for_update = recent_videos if len(recent_videos) >= MIN_VIDEOS_FOR_UPDATE else all_videos[:SLIDING_WINDOW_SIZE]  # pyre-ignore[16]
+    
+    # --- LOG-ONLY (SHADOW) MODE ---
+    # First 50 videos: observe and learn, but do NOT change weights.
+    # Bandit state is updated so knowledge accumulates for when threshold is reached.
+    MIN_TOTAL_VIDEOS_FOR_BANDIT = 50
+    
+    if len(all_videos) < MIN_TOTAL_VIDEOS_FOR_BANDIT:
+        bandit_state = config.get("bandit_state", {})
+        
+        for video in videos_for_update:
+            try:
+                actual = float(video.get("actual_retention", 0))
+                days_old = get_video_age_days(video)
+                reward = calculate_reward(actual, days_old)
+                mode = video.get("mode", "QUALITY")
+                title_type = video.get("title_variant_type", "safe")
+                bandit_state = update_bandit_state(bandit_state, f"mode_{mode}", reward)
+                bandit_state = update_bandit_state(bandit_state, f"title_{title_type}", reward)
+            except Exception as e:
+                print(f"[WARNING] Failed to process video in log-only mode: {e}")
+        
+        config["bandit_state"] = bandit_state
+        save_autopilot_config(config, region)
+        
+        result["action"] = "log_only"
+        result["message"] = (
+            f"Shadow mode: {len(all_videos)}/{MIN_TOTAL_VIDEOS_FOR_BANDIT} videos completed. "
+            f"Learning from {len(videos_for_update)} videos but NOT updating weights yet."
+        )
+        return result
     
     # Update bandit state and weights
     bandit_state = config.get("bandit_state", {})

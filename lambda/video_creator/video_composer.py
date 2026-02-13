@@ -115,12 +115,29 @@ def compose_video(
         )
         scaled_clips.append(f"[v{i}]")
     
-    # Concatenate all clips with crossfade transitions
-    # For 4 clips, we add subtle crossfades
+    # HARD CUT with WHITE FLASH between clips
+    # 2-frame (0.066s) white flash = neurological attention reset
+    # Viewer's brain involuntarily refocuses on each flash burst
     if len(video_paths) > 1:
-        # Simple concat for now (crossfade can cause sync issues)
-        concat_input = ''.join(scaled_clips)
-        filter_parts.append(f"{concat_input}concat=n={len(video_paths)}:v=1:a=0[vconcat]")
+        flash_duration = 0.066  # 2 frames at 30fps
+        flash_idx = len(video_paths)  # Start flash indices after video inputs
+        
+        # Create white flash clips between each pair
+        all_concat_parts = []
+        for i in range(len(video_paths)):
+            all_concat_parts.append(f"[v{i}]")
+            # Add flash between clips (not after last)
+            if i < len(video_paths) - 1:
+                fi = flash_idx + i
+                filter_parts.append(
+                    f"color=c=white:s={OUTPUT_WIDTH}x{OUTPUT_HEIGHT}:d={flash_duration}:r={FPS},"
+                    f"format=yuv420p[flash{i}]"
+                )
+                all_concat_parts.append(f"[flash{i}]")
+        
+        total_segments = len(video_paths) + (len(video_paths) - 1)  # clips + flashes
+        concat_input = ''.join(all_concat_parts)
+        filter_parts.append(f"{concat_input}concat=n={total_segments}:v=1:a=0[vconcat]")
     else:
         filter_parts.append(f"[v0]null[vconcat]")
     

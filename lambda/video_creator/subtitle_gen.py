@@ -1,7 +1,10 @@
 """
 Subtitle Generator for History YouTube Shorts
-Creates ASS (Advanced SubStation Alpha) subtitle files
-ANIMATED, COLORFUL styling with word-by-word reveal effects
+HORMOZI STYLE: Word-blast kinetic text
+1-3 words at a time, BIG font, scale-up pop animation
+Designed for maximum retention on Shorts/TikTok
+
+v2.0 - "Street Smart Edition"
 """
 
 import os
@@ -11,11 +14,11 @@ import uuid
 import re
 
 
-# HISTORY STYLE - Animated, golden text with dramatic effects
-# Inspired by documentary/cinema title cards
-HISTORY_STYLE = """
+# HORMOZI STYLE - Big, bold, center-screen word blasts
+# Inspired by Alex Hormozi / viral TikTok text overlays
+HORMOZI_STYLE = """
 [Script Info]
-Title: History Shorts Subtitles
+Title: History Shorts - Hormozi Style
 ScriptType: v4.00+
 WrapStyle: 0
 ScaledBorderAndShadow: yes
@@ -25,22 +28,25 @@ PlayResY: 1920
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial Black,52,&H00E0E0FF,&H000000FF,&H00202040,&H80000000,1,0,0,0,100,100,1,0,1,3,2,2,40,40,350,1
-Style: Hook,Arial Black,58,&H0088CCFF,&H000000FF,&H00203060,&H80000000,1,0,0,0,100,100,1,0,1,4,3,2,40,40,350,1
-Style: Emphasis,Arial Black,56,&H0080D0FF,&H000000FF,&H00304050,&H80000000,1,0,0,0,105,100,2,0,1,4,2,2,40,40,350,1
-Style: Ending,Arial Black,54,&H00C0A080,&H000000FF,&H00403020,&H80000000,1,1,0,0,100,100,1,0,1,3,2,2,40,40,350,1
+Style: Default,Impact,72,&H00FFFFFF,&H000000FF,&H00000000,&HC0000000,1,0,0,0,100,100,2,0,1,5,3,5,40,40,550,1
+Style: Emphasis,Impact,82,&H0000FFFF,&H000000FF,&H00000000,&HC0000000,1,0,0,0,100,100,2,0,1,6,3,5,40,40,550,1
+Style: Hook,Impact,86,&H0000CCFF,&H000000FF,&H00000000,&HC0000000,1,0,0,0,100,100,2,0,1,6,4,5,40,40,550,1
+Style: Ending,Impact,78,&H0080D0FF,&H000000FF,&H00000000,&HC0000000,1,0,0,0,100,100,2,0,1,5,3,5,40,40,550,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
-# Color palette for word highlighting (ASS format BGR)
-HIGHLIGHT_COLORS = [
-    "&H0088CCFF",  # Golden/amber
-    "&H00A0D0FF",  # Warm gold
-    "&H0080CCFF",  # Orange-gold
-    "&H00C0E0FF",  # Light gold
-]
+# Power words that get YELLOW emphasis (Hormozi trick)
+POWER_WORDS = {
+    "never", "always", "killed", "died", "destroyed", "impossible", "secret",
+    "actually", "truth", "lie", "wrong", "insane", "crazy", "worst", "best",
+    "only", "first", "last", "real", "fake", "hidden", "banned", "forbidden",
+    "deadliest", "bloodiest", "biggest", "smallest", "richest", "poorest",
+    "war", "death", "murder", "empire", "fall", "collapse", "betrayed",
+    "everything", "nothing", "nobody", "everyone", "million", "billion",
+    "ancient", "forgotten", "lost", "cursed", "haunted", "legendary",
+}
 
 
 def format_ass_time(seconds: float) -> str:
@@ -52,21 +58,70 @@ def format_ass_time(seconds: float) -> str:
     return f"{hours}:{minutes:02d}:{secs:02d}.{centisecs:02d}"
 
 
+def is_power_word(word: str) -> bool:
+    """Check if a word should get yellow emphasis"""
+    clean = re.sub(r'[^a-zA-Z]', '', word).lower()
+    return clean in POWER_WORDS
+
+
+def chunk_words(words: List[str], max_chunk: int = 3) -> List[str]:
+    """
+    Split words into 1-3 word chunks for Hormozi-style display.
+    
+    Rules:
+    - Power words get their own chunk (solo blast)
+    - Short common words attach to the next word
+    - Max 3 words per chunk
+    """
+    chunks = []
+    i = 0
+    
+    while i < len(words):  # pyre-ignore[6]
+        word = words[i]
+        
+        # Power word = solo blast
+        if is_power_word(word):
+            chunks.append(word)
+            i += 1  # pyre-ignore[6]
+            continue
+        
+        # Build chunk of 1-3 words
+        chunk = [word]
+        remaining = min(max_chunk - 1, len(words) - i - 1)  # pyre-ignore[6]
+        
+        for j in range(1, remaining + 1):
+            next_word = words[i + j]  # pyre-ignore[6]
+            # If next word is a power word, stop here — it gets its own chunk
+            if is_power_word(next_word):
+                break
+            chunk.append(next_word)
+            # Stop at 2 words if current chunk is already getting long
+            total_chars = sum(len(w) for w in chunk)
+            if total_chars > 14:
+                break
+        
+        chunks.append(" ".join(chunk))
+        i += len(chunk)  # pyre-ignore[6]
+    
+    return chunks
+
+
 def create_subtitle_file(
     title: str,
     narration_text: str,
     total_duration: float
 ) -> str:
     """
-    Create an ASS subtitle file with ANIMATED, HISTORY styling
+    Create an ASS subtitle file with HORMOZI STYLE word blasts.
+    
     Features:
-    - Word-by-word fade-in animation
-    - Golden/amber color scheme
-    - Slide-up entrance effect
-    - Different styles for hook/emphasis/ending
+    - 1-3 words at a time (NOT full sentences)
+    - Scale-up POP animation on each word group
+    - Power words in YELLOW with extra size
+    - Center-screen positioning for maximum eye-catch
     
     Args:
-        title: Video title (not displayed - keeping it minimal)
+        title: Video title (not displayed)
         narration_text: Full narration text
         total_duration: Total video duration in seconds
         
@@ -78,125 +133,101 @@ def create_subtitle_file(
     
     events = []
     
-    # Split text into sentences - more robust approach
-    # First, normalize ellipsis and other punctuation
-    normalized_text = narration_text.replace('...', '…')  # Normalize ellipsis
-    normalized_text = normalized_text.replace('..', '.')   # Fix double dots
+    # Split text into sentences first for section detection
+    normalized_text = narration_text.replace('...', '…').replace('..', '.')
+    sentences = re.split(r'(?<=[.?!…])\s+', normalized_text)
+    sentences = [s.strip() for s in sentences if s.strip() and len(s.strip()) > 1]
     
-    # Split on sentence-ending punctuation, keeping the punctuation
-    segments = re.split(r'(?<=[.?!…])\s+', normalized_text)
+    if not sentences:
+        sentences = [narration_text.strip()]
     
-    # Filter out empty strings and standalone punctuation
-    phrases = []
-    for seg in segments:
-        seg = seg.strip()
-        # Skip empty strings or strings that are only punctuation
-        if seg and len(seg) > 1 and not all(c in '.?!…, ' for c in seg):
-            phrases.append(seg)
-        elif seg and len(seg) == 1 and seg not in '.?!…':
-            # Single character that's not punctuation - keep it
-            phrases.append(seg)
+    # Calculate total words for timing
+    all_words = narration_text.split()
+    total_words = len(all_words) or 1
     
-    if not phrases:
-        phrases = [narration_text.strip()]
+    # Build word-level timing: each word gets equal time share
+    word_duration = total_duration / total_words
     
-    # Calculate timing based on word count (weighted duration)
-    # Longer phrases get proportionally more time
-    word_counts = [len(phrase.split()) for phrase in phrases]
-    total_words = sum(word_counts) or 1
+    # Now iterate through sentences, chunk their words, and create events
+    global_word_index = 0
     
-    # Calculate weighted durations
-    phrase_timings = []
-    current_time = 0.0
-    for i, phrase in enumerate(phrases):
-        # Weight by word count with minimum duration of 1.5 seconds
-        weight = word_counts[i] / total_words
-        phrase_duration = max(1.5, total_duration * weight)
-        phrase_timings.append((current_time, current_time + phrase_duration, phrase))
-        current_time += phrase_duration
-    
-    # Normalize timings to fit total duration
-    if current_time > total_duration:
-        scale = total_duration / current_time
-        phrase_timings = [(s * scale, e * scale, p) for s, e, p in phrase_timings]
-    
-    for i, (start_time, end_time, phrase) in enumerate(phrase_timings):
-        # Choose style based on position
-        if i == 0:
-            style = "Hook"  # First sentence - dramatic
-        elif i == len(phrase_timings) - 1:
-            style = "Ending"  # Last sentence - reflective
-        elif "but" in phrase.lower() or "however" in phrase.lower():
-            style = "Emphasis"  # Contrast sentences
+    for sent_idx, sentence in enumerate(sentences):
+        words = sentence.split()
+        if not words:
+            continue
+        
+        # Determine style based on sentence position
+        if sent_idx == 0:
+            base_style = "Hook"
+        elif sent_idx == len(sentences) - 1:
+            base_style = "Ending"
         else:
-            style = "Default"
+            base_style = "Default"
         
-        # KARAOKE EFFECT: Word-by-word highlighting
-        # Calculate duration per word for karaoke timing
-        words = phrase.split()
-        phrase_duration = end_time - start_time
+        # Chunk the words into 1-3 word groups
+        chunks = chunk_words(words)
         
-        if len(words) > 1:
-            # Use karaoke fill effect (\kf) for smooth word-by-word highlighting
-            # Calculate centiseconds per word (ASS karaoke uses centiseconds)
-            cs_per_word = int((phrase_duration * 100) / len(words))
+        for chunk in chunks:
+            chunk_word_count = len(chunk.split())
             
-            # Build karaoke text with \kf tags
-            karaoke_parts = []
-            for j, word in enumerate(words):
-                safe_word = escape_ass_text(word)
-                # \kf = karaoke fill (smooth sweep), value is duration in centiseconds
-                karaoke_parts.append(f"{{\\kf{cs_per_word}}}{safe_word}")
+            # Calculate timing based on word position
+            start_time = global_word_index * word_duration  # pyre-ignore[6]
+            end_time = (global_word_index + chunk_word_count) * word_duration  # pyre-ignore[6]
             
-            karaoke_text = " ".join(karaoke_parts)
-        else:
-            # Single word - no karaoke needed
-            karaoke_text = escape_ass_text(phrase)
-        
-        # Animation effects + karaoke base styling
-        # \\1c = primary color (text), \\3c = outline color
-        # Karaoke effect changes color as words are spoken
-        
-        if style == "Hook":
-            # Hook: Gold highlight sweep with slide up
-            effects = (
-                "{\\fad(250,350)}"  # Fade in/out
-                "{\\move(540,1560,540,1520,0,200)}"  # Slide up (moved higher)
-                "{\\K1}"  # Karaoke mode - words light up with primary color
+            # Minimum display time: 0.25s per word, minimum 0.4s total
+            min_display = max(0.4, chunk_word_count * 0.25)
+            if (end_time - start_time) < min_display:
+                end_time = start_time + min_display
+            
+            # Clamp to total duration
+            if end_time > total_duration:
+                end_time = total_duration
+            if start_time >= total_duration:
+                break
+            
+            # Check if this chunk contains a power word
+            has_power = any(is_power_word(w) for w in chunk.split())
+            style = "Emphasis" if has_power else base_style
+            
+            # Escape text for ASS
+            safe_text = escape_ass_text(chunk.upper())  # ALL CAPS for impact
+            
+            # ANIMATION: Scale-up pop + fade
+            # \fscx130\fscy130 → \fscx100\fscy100 = "pop in" effect
+            # \fad(80,120) = quick fade in/out
+            # \an5 = center alignment override
+            if has_power:
+                # Power words: BIGGER pop, yellow color flash
+                effects = (
+                    "{\\an5}"
+                    "{\\fad(60,100)}"
+                    "{\\t(0,80,\\fscx100\\fscy100)}"  # Scale down from 140% to 100%
+                    "{\\fscx140\\fscy140}"  # Start at 140%
+                    "{\\1c&H00FFFF&}"  # Yellow (BGR)
+                )
+            else:
+                # Normal words: standard pop
+                effects = (
+                    "{\\an5}"
+                    "{\\fad(60,100)}"
+                    "{\\t(0,80,\\fscx100\\fscy100)}"  # Scale down from 120% to 100%
+                    "{\\fscx120\\fscy120}"  # Start at 120%
+                )
+            
+            events.append(
+                f"Dialogue: 0,{format_ass_time(start_time)},{format_ass_time(end_time)},{style},,0,0,0,,{effects}{safe_text}"
             )
-        elif style == "Emphasis":
-            # Emphasis: Brighter highlight with color flash
-            effects = (
-                "{\\fad(200,300)}"
-                "{\\move(540,1560,540,1520,0,200)}"
-                "{\\K1}"
-            )
-        elif style == "Ending":
-            # Ending: Slower karaoke with elegant fade
-            effects = (
-                "{\\fad(400,600)}"
-                "{\\move(540,1560,540,1520,0,300)}"
-                "{\\K1}"
-            )
-        else:
-            # Default style with karaoke
-            effects = (
-                "{\\fad(250,350)}"
-                "{\\move(540,1560,540,1520,0,200)}"
-                "{\\K1}"
-            )
-        
-        events.append(
-            f"Dialogue: 0,{format_ass_time(start_time)},{format_ass_time(end_time)},{style},,0,0,0,,{effects}{karaoke_text}"
-        )
+            
+            global_word_index += chunk_word_count  # pyre-ignore[6]
     
     # Write the ASS file
     with open(subtitle_path, 'w', encoding='utf-8') as f:
-        f.write(HISTORY_STYLE)
+        f.write(HORMOZI_STYLE)
         f.write('\n'.join(events))
         f.write('\n')
     
-    print(f"✅ Created animated history subtitle file: {subtitle_path}")
+    print(f"✅ Created HORMOZI-style subtitle file: {subtitle_path}")
+    print(f"   Word blasts: {len(events)} chunks from {total_words} words")
     return subtitle_path
 
 
@@ -224,7 +255,7 @@ def create_simple_subtitle(text: str, duration: float) -> str:
     
     safe_text = escape_ass_text(text[:80])  # Limit length  # pyre-ignore[16]
     
-    content = HISTORY_STYLE + f"Dialogue: 0,{format_ass_time(0)},{format_ass_time(duration)},Default,,0,0,0,,{{\\fad(500,500)}}{safe_text}\n"
+    content = HORMOZI_STYLE + f"Dialogue: 0,{format_ass_time(0)},{format_ass_time(duration)},Default,,0,0,0,,{{\\an5}}{{\\fad(500,500)}}{safe_text}\n"
     
     with open(subtitle_path, 'w', encoding='utf-8') as f:
         f.write(content)
@@ -235,11 +266,11 @@ def create_simple_subtitle(text: str, duration: float) -> str:
 if __name__ == "__main__":
     # Test subtitle generation
     path = create_subtitle_file(
-        title="🌙 Long day?",
-        narration_text="Mind feels loud? You don't have to solve anything right now. Just breathe.",
-        total_duration=10.0
+        title="🌙 Ancient Secret",
+        narration_text="The Aztec Empire had a secret weapon. They never used swords. Instead, they used obsidian blades so sharp they could cut through steel. But here's the insane part. The Spanish destroyed every single one.",
+        total_duration=15.0
     )
-    print(f"Created: {path}")
+    print(f"\nCreated: {path}")
     
     # Print contents
     with open(path, 'r') as f:

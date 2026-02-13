@@ -47,6 +47,12 @@ from utils.editorial import find_viral_angle, normalize_era as refine_era_from_t
 WRITER_TEMPERATURE = 0.8      # Creative generation
 EVALUATOR_TEMPERATURE = 0.1   # Stable scoring
 
+# Dual Evaluator: Haiku as second jury (breaks the closed loop)
+HAIKU_MODEL_ID = os.environ.get(
+    'BEDROCK_EVALUATOR_MODEL_ID',
+    'us.anthropic.claude-haiku-4-5-20251001-v1:0'
+)
+
 # Token limits (keep costs down)
 WRITER_MAX_TOKENS = 600
 EVALUATOR_MAX_TOKENS = 400
@@ -55,6 +61,11 @@ EVALUATOR_MAX_TOKENS = 400
 HOOK_THRESHOLD = 9.0          # Hook must score >= 9.0
 SECTION_THRESHOLD = 8.5       # Each section must score >= 8.5
 FINAL_THRESHOLD = 8.5         # Combined script must score >= 8.5
+
+# Dual jury scoring weights
+SONNET_WEIGHT = 0.4            # Structure guardian weight
+HAIKU_WEIGHT = 0.6             # Attention guardian weight
+SONNET_FLOOR = 6.5             # Min Sonnet score to even consider publishing
 
 # Iteration limits
 HOOK_MAX_ITERATIONS = 5       # Max hook refinement rounds
@@ -386,31 +397,31 @@ def generate_title_variants(client, hook: str, topic: str) -> list:
 # ============================================================================
 
 HOOK_ANCHOR_EXAMPLES = """
-CALIBRATION EXAMPLES (use these to anchor your scoring):
+CALIBRATION EXAMPLES (be a ruthless 15-year-old TikTok judge):
 
-SCORE 9-10 (Elite scroll-stoppers):
-- "Australia sent soldiers with machine guns to kill birds. The birds won." (9.5)
-- "Shakespeare made up Richard III's hunchback. The guy was fine." (9.0)
-- "Cleopatra lived closer to the iPhone than to the pyramids." (9.5)
+SCORE 9-10 (You literally STOPPED scrolling — "wait WHAT?!"):
+- "Australia sent soldiers with machine guns to kill birds. The birds won." (9.5 — bizarre + contradiction)
+- "Cleopatra lived closer to the iPhone than to the pyramids." (9.5 — brain-breaking paradox)
+- "A king killed his best friend over a dinner argument." (9.0 — shocking + specific)
 
-SCORE 4-5 (Weak/generic):
-- "Did you know Napoleon wasn't actually short?" (4.0 - begging opener)
-- "In 1453, the Ottoman Empire conquered Constantinople." (4.5 - boring date opener)
-- "History has many interesting stories to tell." (3.0 - zero tension)
+SCORE 4-5 (You yawned and swiped):
+- "Did you know Napoleon wasn't actually short?" (4.0 — boring question opener, SWIPE)
+- "In 1453, the Ottoman Empire conquered Constantinople." (4.5 — history textbook, SWIPE)
+- "History has many interesting stories to tell." (2.0 — literally nothing to stop for)
 """
 
 SECTION_ANCHOR_EXAMPLES = """
-CALIBRATION EXAMPLES:
+CALIBRATION EXAMPLES (would a 15-year-old with ADHD keep watching?):
 
-SCORE 9-10 (Excellent sections):
-- CONTEXT: "1932. Crops dying. Farmers desperate. The enemy? Twenty thousand emus." (9.0 - vivid stakes)
-- BODY: "They fired. Emus scattered. Bullets hit nothing. The birds didn't flinch." (9.5 - punchy pacing)
-- OUTRO: "The army retreated. The emus kept eating." (9.0 - perfect ironic punch)
+SCORE 9-10 (CRISIS -> ESCALATION -> can't look away):
+- CRISIS: "1932. Crops dying. Farmers desperate. The enemy? Twenty thousand emus." (9.0 — vivid threat, specific stakes)
+- ESCALATION: "They fired. Emus scattered. Bullets hit nothing. The birds didn't even flinch." (9.5 — it gets WORSE, punchy rhythm)
+- TWIST+PUNCH: "The army retreated. The emus kept eating. And that's the real reason why—" (9.0 — ironic + loops back)
 
-SCORE 5-6 (Mediocre):
-- CONTEXT: "This happened in Australia a long time ago when there were problems." (5.0 - vague)
-- BODY: "The soldiers tried to shoot the emus but it didn't work very well." (5.5 - no punch)
-- OUTRO: "And that's how the story ended." (4.0 - no impact)
+SCORE 5-6 (You'd swipe before the sentence ends):
+- CRISIS: "This happened in Australia a long time ago when there were problems." (5.0 — zero urgency)
+- ESCALATION: "The soldiers tried to shoot the emus but it didn't work very well." (5.5 — no punch, flat)
+- TWIST+PUNCH: "And that's how the story ended." (4.0 — no twist, no loop, DEAD ending)
 """
 
 # ============================================================================
@@ -433,35 +444,52 @@ RULES:
 - NO: "Did you know", "In [year]", "Have you ever wondered"
 - Make them AGGRESSIVE scroll-stoppers
 - IF SOURCE TEXT PROVIDED: Use ONLY facts from Source Text.
+- PERFECT LOOP: The hook MUST end with a dangling clause, unfinished thought, or open question that the OUTRO will complete. Think of it as a sentence that starts at the end of the video and loops seamlessly to the beginning.
+  Do NOT end abruptly with a dash (--). Make the hook a complete thought that naturally flows FROM the outro's last words.
+  Example: Hook ends with "...and that's the real reason why" -> Outro completes it -> viewer loops back.
 
 Return ONLY valid JSON:
 {{"hooks": ["hook1", "hook2", "hook3"]}}"""
 
-HOOK_EVALUATOR_PROMPT = """You are a strict YouTube Shorts hook evaluator. Score these hooks 0-10.
+HOOK_EVALUATOR_PROMPT = """You are a 15-year-old with SEVERE ADHD scrolling TikTok at 2 AM. You have ZERO patience. If a hook doesn't SHOCK you in 1.5 seconds, you swipe immediately.
+
+You only stop for: bizarre contradictions, "wait WHAT?!" moments, things that sound dangerously wrong, or stuff so weird your brain can't process it fast enough to swipe.
+
+You DO NOT care about: educational value, historical accuracy, eloquent writing, or clever wordplay. You care about RAW shock value and instant confusion.
 
 {anchor_examples}
 
 HOOKS TO EVALUATE:
 {hooks_json}
 
-SCORING RUBRIC (be harsh, elite content only):
-- tension (0-3): Does it create crisis/threat/contradiction?
-- clarity (0-2): Understood in 1 second?
-- scroll_stop (0-3): Would YOU stop scrolling?
-- word_count (0-2): 6-9 words = 2, 10-12 = 1, other = 0
+SCORING RUBRIC (be BRUTAL — you're bored and sleepy):
+- wtf_factor (0-4): "Wait, WHAT?!" reaction strength. 0 = boring. 4 = you said it out loud.
+- scroll_stop (0-3): Would you PHYSICALLY stop your thumb? Be honest.
+- clarity (0-2): Understood in 1.5 seconds while half-asleep? If you have to re-read, it's 0.
+- boredom_risk (0-1): 1 = does NOT sound like a textbook. 0 = sounds like school.
 
-Return ONLY valid JSON:
+CRITICAL: Respond ONLY with valid JSON. No markdown formatting (no ```json). No preamble, explanations, or concluding remarks. Just the raw JSON object. All scores MUST be between 0 and 10.
 {{
   "evaluations": [
-    {{"hook": "...", "tension": X, "clarity": X, "scroll_stop": X, "word_count": X, "total": X, "fixes": ["..."]}},
+    {{"hook": "...", "wtf_factor": X, "scroll_stop": X, "clarity": X, "boredom_risk": X, "total": X, "fixes": ["..."]}},
     ...
   ]
 }}"""
 
-HOOK_REFINER_PROMPT = """Rewrite this hook to fix the issues. Keep it 6-12 words, punchy, scroll-stopping.
+HOOK_REFINER_PROMPT = """Rewrite this hook. A real 19-year-old viewer gave this feedback:
+
+VIEWER ATTENTION DIAGNOSTICS:
+- Skip Reason: {skip_reason}
+- Attention Drops At Word: "{drop_word}"
+- Additional Issues: {fixes}
 
 ORIGINAL HOOK: {hook}
-ISSUES TO FIX: {fixes}
+
+REWRITE CONSTRAINTS:
+- 6-12 words, punchy, scroll-stopping.
+- SPECIFICALLY fix the drop point — that word/phrase must change or disappear.
+- The new hook must create a curiosity gap the old one lacked.
+- Do NOT just rephrase — change the PSYCHOLOGY of the hook.
 
 Return ONLY the new hook text, nothing else."""
 
@@ -479,71 +507,218 @@ SECTION TYPE: {section_type}
 Return ONLY valid JSON:
 {{"variants": ["variant1", "variant2"]}}"""
 
-SECTION_EVALUATOR_PROMPT = """Evaluate these {section_type} sections. Score 0-10.
+SECTION_EVALUATOR_PROMPT = """You are a 15-year-old with ADHD watching this video on your phone. You're already 3 seconds in (you stayed for the hook). Now evaluate if these {section_type} sections keep you watching or make you swipe.
+
+Remember: you have the attention span of a goldfish on caffeine. If a single sentence feels like a lecture, you're GONE.
 
 {anchor_examples}
 
-HOOK FOR CONTEXT: {hook}
+HOOK THAT KEPT YOU (for context): {hook}
 
 VARIANTS TO EVALUATE:
 {variants_json}
 
-SCORING RUBRIC:
-- clarity (0-3): Is the message crystal clear?
-- pacing (0-3): Does it flow well, punchy sentences?
-- punch (0-4): Does it hit hard, memorable?
+SCORING RUBRIC (your thumb is hovering over the screen):
+- drama (0-4): Does it feel like something TERRIBLE is about to happen? Stakes rising?
+- pace (0-3): Are sentences punchy (5-8 words)? Or long boring paragraphs?
+- rewatch (0-3): Would you watch this part AGAIN? Would you show a friend?
 
-Return ONLY valid JSON:
+CRITICAL: Respond ONLY with valid JSON. No markdown formatting (no ```json). No preamble, explanations, or concluding remarks. Just the raw JSON object. All scores MUST be between 0 and 10.
 {{
   "evaluations": [
-    {{"text": "...", "clarity": X, "pacing": X, "punch": X, "total": X, "fixes": ["..."]}},
+    {{"text": "...", "drama": X, "pace": X, "rewatch": X, "total": X, "fixes": ["..."]}},
     ...
   ]
 }}"""
 
-SECTION_REFINER_PROMPT = """Rewrite this {section_type} section to fix the issues.
+SECTION_REFINER_PROMPT = """Rewrite this {section_type} section. A real 19-year-old viewer gave this feedback:
+
+VIEWER ATTENTION DIAGNOSTICS:
+- Skip Reason: {skip_reason}
+- Attention Drops At Word: "{drop_word}"
+- Additional Issues: {fixes}
 
 ORIGINAL: {text}
-ISSUES: {fixes}
 HOOK CONTEXT: {hook}
 
-Keep it punchy, short sentences, high impact.
+REWRITE CONSTRAINTS:
+- Fix the drop point — that word/phrase must change or disappear.
+- Every sentence must hit HARDER than the last.
+- Keep it punchy, short sentences, high impact.
+- Do NOT just rephrase — change the ENERGY.
+
 Return ONLY the improved text, nothing else."""
 
-FINAL_EVALUATOR_PROMPT = """Evaluate this complete YouTube Short script. Score 0-10.
+FINAL_EVALUATOR_PROMPT = """You just watched this entire YouTube Short as a bored teenager. Score it 0-10.
 
 FULL SCRIPT:
 ---
 {full_script}
 ---
 
-RUBRIC:
-- hook_impact (0-2): Does hook grab attention?
-- flow (0-3): Do sections connect smoothly?
-- pacing (0-3): Is rhythm consistent, no drag?
-- punch (0-2): Does outro land?
+RUBRIC (be honest — would you watch it TWICE?):
+- hook_impact (0-2): Did the first sentence make you stop? Or did you almost swipe?
+- escalation (0-3): Did it get MORE intense? Or did it plateau after the hook?
+- pacing (0-3): Every sentence punchy? Or did you zone out somewhere?
+- loop_power (0-2): Does the ending make you want to watch from the beginning AGAIN?
 
-Return ONLY valid JSON:
-{{"hook_impact": X, "flow": X, "pacing": X, "punch": X, "total": X, "weakest_section": "hook|context|body|outro", "fix_suggestion": "..."}}"""
+CRITICAL: Respond ONLY with valid JSON. No markdown formatting (no ```json). No preamble, explanations, or concluding remarks. Just the raw JSON object. All scores MUST be between 0 and 10.
+{{"hook_impact": X, "escalation": X, "pacing": X, "loop_power": X, "total": X, "weakest_section": "hook|context|body|outro", "fix_suggestion": "..."}}"""
+
+# ============================================================================
+# HAIKU EVALUATOR PROMPTS (Penalty-Based, Separate Persona)
+# These are ONLY used by the Haiku jury. Sonnet uses the prompts above.
+# Philosophy: Start at 10, LOSE points. Hard ceilings enforce brutal honesty.
+# ============================================================================
+
+HAIKU_HOOK_EVALUATOR_PROMPT = """You are 19 years old. You spend 3+ hours daily on YouTube Shorts and TikTok. You are ADDICTED to dopamine hits. You have ZERO loyalty to any creator.
+
+Your thumb moves FAST. You give every video exactly 1.5 seconds. If you're not confused, shocked, or angry in that time, you're GONE.
+
+You are BRUTALLY honest. You don't care about hurting feelings. You score like a real viewer behaves, not like a teacher grading an essay.
+
+HOOKS TO EVALUATE:
+{hooks_json}
+
+SCORING RULES (start at 10, LOSE points):
+
+HARD CEILINGS (these are ABSOLUTE — you CANNOT score above these no matter what):
+- First sentence sounds like a textbook or documentary? MAX 3/10.
+- First sentence is predictable (you can guess the next word)? MAX 6/10.
+- No curiosity gap (you don't NEED to know what happens next)? MAX 5/10.
+- No emotional tension (no danger, no anger, no absurdity)? MAX 7/10.
+- You have to re-read it to understand? MAX 4/10.
+
+PENALTIES (subtract from 10):
+- Starts with year/date ("In 1453...") → -3
+- Uses "Did you know" or "Have you ever wondered" → -4
+- Longer than 12 words → -1 per extra word
+- Feels like it belongs on History Channel → -2
+- You've seen similar hooks before → -2
+
+BONUSES (can recover lost points, but NOT exceed ceiling):
+- Made you say "wait WHAT" out loud → +2
+- Contains a contradiction that breaks your brain → +2
+- Sounds dangerously wrong/offensive (but isn't) → +1
+
+9-10: You would LITERALLY show this to a friend. This NEVER happens.
+7-8: You stayed. Good hook. Not legendary.
+5-6: Meh. You might stay if bored.
+3-4: You swiped. Boring.
+0-2: You didn't even finish reading it.
+
+For EACH hook, you MUST also answer:
+- skip_reason: In 5 words, why would someone swipe away?
+- drop_word: The EXACT word where a viewer would lose interest (or "none" if they wouldn't)
+
+CRITICAL: Respond ONLY with valid JSON. No markdown. No explanations. All scores 0-10.
+{{
+  "evaluations": [
+    {{"hook": "...", "total": X, "skip_reason": "...", "drop_word": "...", "fixes": ["..."]}},
+    ...
+  ]
+}}"""
+
+HAIKU_SECTION_EVALUATOR_PROMPT = """You are 19 years old, dopamine-addicted, scrolling at 2 AM. You stayed for the hook. Now you're 3 seconds in. Your thumb is HOVERING — one boring sentence and you're GONE.
+
+You don't care about: learning something, good writing, clever metaphors. You care about: "then what happened?!", escalating tension, and punchy rhythm.
+
+HOOK THAT KEPT YOU: {hook}
+
+SECTION TYPE: {section_type}
+
+VARIANTS TO EVALUATE:
+{variants_json}
+
+SCORING RULES (start at 10, LOSE points):
+
+HARD CEILINGS:
+- Any sentence longer than 10 words? MAX 7/10.
+- Tension stays flat (doesn't escalate)? MAX 5/10.
+- Sounds like a Wikipedia article? MAX 3/10.
+- You zoned out at any point? MAX 6/10.
+- No new information that surprises you? MAX 6/10.
+
+PENALTIES:
+- Contains filler words ("however", "furthermore", "additionally") → -3
+- Explains instead of SHOWS → -2
+- Any sentence that feels like a lecture → -2 per sentence
+- Pacing slows down (longer sentences appear) → -2
+
+BONUSES:
+- Each sentence hits harder than the last → +2
+- Contains a detail so specific it feels real → +1
+- You want to screenshot a line → +1
+
+For EACH variant, you MUST also answer:
+- skip_reason: Why would someone swipe HERE? (5 words max)
+- drop_word: Exact word where attention dies (or "none")
+
+CRITICAL: Respond ONLY with valid JSON. No markdown. No explanations. All scores 0-10.
+{{
+  "evaluations": [
+    {{"text": "...", "total": X, "skip_reason": "...", "drop_word": "...", "fixes": ["..."]}},
+    ...
+  ]
+}}"""
+
+HAIKU_FINAL_EVALUATOR_PROMPT = """You just watched this entire YouTube Short. You are 19, dopamine-addicted, brutally honest. Score it.
+
+FULL SCRIPT:
+---
+{full_script}
+---
+
+SCORING RULES (start at 10, LOSE points):
+
+HARD CEILINGS:
+- You got bored at ANY point? MAX 6/10.
+- The ending was predictable? MAX 5/10.
+- It felt like a school presentation? MAX 4/10.
+- You wouldn't watch it twice? MAX 7/10.
+- You wouldn't send it to a friend? MAX 8/10.
+
+PENALTIES:
+- Tension plateaued after hook → -2
+- Any section felt like filler → -2
+- Ending didn't loop back to beginning → -2
+- You could predict the ending from the hook → -3
+
+BONUSES:
+- Would genuinely send to group chat → +2
+- Would watch it 3+ times → +2
+- The ending made you go "OH" → +1
+
+You MUST also answer:
+- skip_reason: Why would someone NOT finish this? (5 words max)
+- drop_word: Exact word where you almost swiped (or "none")
+
+CRITICAL: Respond ONLY with valid JSON. No markdown. No explanations. All scores 0-10.
+{{"total": X, "skip_reason": "...", "drop_word": "...", "weakest_section": "hook|context|body|outro", "fix_suggestion": "..."}}"""
 
 SECTION_RULES = {
     "context": """
-CONTEXT RULES (1-2 sentences):
-- Set the stakes: who/where/what danger
-- Make it VISUAL and SPECIFIC
-- Create tension, not just information
+CRISIS RULES (1-2 sentences):
+- CREATE A CRISIS in 5 seconds: who is in danger? what's at stake? what's about to go wrong?
+- Make it VISUAL and SPECIFIC — paint a scene, not a Wikipedia summary
+- The viewer must feel "oh no, then what happened?!"
+- Use present tense for urgency: "1932. Crops are dying. Farmers are desperate."
 - Max 25 words""",
     "body": """
-BODY RULES (2-4 short sentences):
-- Vivid specific details
-- Escalate tension
-- Short punchy sentences (5-8 words each)
+ESCALATION RULES (2-4 short sentences):
+- Make the crisis WORSE — things escalate, not explain
+- Add an unexpected detail that makes the viewer say "no way"
+- Short punchy sentences (5-8 words each) — each sentence is a PUNCH
+- The tension must RISE with every sentence, never flatten
 - Max 40 words""",
     "outro": """
-OUTRO RULES (1-2 sentences):
-- Punch line that echoes
-- Ironic reversal OR cold truth OR one-word punch
-- Make them want to screenshot it
+TWIST + PUNCHLINE RULES (1-2 sentences):
+- Deliver a twist NO ONE expected — ironic reversal, cold truth, or dark humor
+- Make them want to screenshot it or send it to a friend
+- PERFECT LOOP: The last phrase must grammatically connect back to the HOOK's first words.
+  Do NOT end abruptly with a dash (--). The outro must be a COMPLETE thought that naturally flows into the hook.
+  Example: Outro ends with "...and that's the real reason why" -> loops into Hook -> viewer replays.
+- The viewer should feel the ground shift under them
 - Max 15 words"""
 }
 
@@ -596,10 +771,14 @@ def invoke_bedrock(
     prompt: str,
     temperature: float = 0.7,
     max_tokens: int = 500,
-    system_prompt: Optional[str] = None
+    system_prompt: Optional[str] = None,
+    model_id: Optional[str] = None
 ) -> str:
     """
     Invoke Bedrock Claude with exponential backoff + jitter for throttling.
+    
+    Args:
+        model_id: Override model. If None, uses BEDROCK_MODEL_ID env var (Sonnet default).
     
     Returns raw text response.
     """
@@ -608,7 +787,7 @@ def invoke_bedrock(
     # Check API call limit
     check_api_limit()
     
-    model_id = os.environ.get('BEDROCK_MODEL_ID', 'us.anthropic.claude-sonnet-4-5-20250929-v1:0')
+    model_id = model_id or os.environ.get('BEDROCK_MODEL_ID', 'us.anthropic.claude-sonnet-4-5-20250929-v1:0')
     
     messages = [{"role": "user", "content": prompt}]
     
@@ -808,26 +987,64 @@ def generate_hooks_batch(client, topic: str, era: str, context: str = "", angle:
 
 
 def evaluate_hooks_batch(client, hooks: List[str]) -> List[dict]:
-    """Evaluate multiple hooks in a single API call."""
+    """Evaluate hooks with dual jury: Sonnet (primary) + Haiku (second opinion)."""
     hooks_json = json.dumps(hooks, ensure_ascii=False)
     prompt = HOOK_EVALUATOR_PROMPT.format(
         anchor_examples=HOOK_ANCHOR_EXAMPLES,
         hooks_json=hooks_json
     )
     
-    response = invoke_bedrock(client, prompt, temperature=EVALUATOR_TEMPERATURE, max_tokens=400)
-    result = parse_json_safe(response, client, prompt, validation_model=models.HookEvaluationBatch if models else None)
+    # Jury 1: Sonnet (primary evaluator)
+    response_sonnet = invoke_bedrock(client, prompt, temperature=EVALUATOR_TEMPERATURE, max_tokens=400)
+    result_sonnet = parse_json_safe(response_sonnet, client, prompt, validation_model=models.HookEvaluationBatch if models else None)
+    evals_sonnet = result_sonnet.get("evaluations", []) if result_sonnet else []
     
-    if result and "evaluations" in result:
-        return result["evaluations"]
+    # Jury 2: Haiku (separate persona -- penalty-based rubric)
+    try:
+        haiku_prompt = HAIKU_HOOK_EVALUATOR_PROMPT.format(hooks_json=hooks_json)
+        response_haiku = invoke_bedrock(client, haiku_prompt, temperature=EVALUATOR_TEMPERATURE, max_tokens=500, model_id=HAIKU_MODEL_ID)
+        result_haiku = parse_json_safe(response_haiku, client, prompt, validation_model=models.HookEvaluationBatch if models else None)
+        evals_haiku = result_haiku.get("evaluations", []) if result_haiku else []
+    except Exception as e:
+        print(f"[WARNING] Haiku eval failed, using Sonnet only: {e}")
+        evals_haiku = []
     
-    # Fallback: return empty evaluations
+    # Merge: weighted scoring with floor guardrail
+    if evals_sonnet:
+        merged = []
+        for i, s_eval in enumerate(evals_sonnet):
+            h_eval = evals_haiku[i] if i < len(evals_haiku) else {}  # pyre-ignore[6]
+            s_total = min(10.0, max(0.0, float(s_eval.get("total", 5.0))))  # clamp 0-10
+            h_total = min(10.0, max(0.0, float(h_eval.get("total", s_total))))  # clamp 0-10
+            
+            # Floor guardrail: structure can't be garbage even if attention is high
+            if s_total < SONNET_FLOOR:
+                final_total = s_total  # Sonnet veto: structurally too weak
+                print(f"    [DUAL] Hook {i+1}: Sonnet={s_total} BELOW FLOOR ({SONNET_FLOOR}) -> Final={final_total}")
+            else:
+                final_total = round(s_total * SONNET_WEIGHT + h_total * HAIKU_WEIGHT, 1)  # pyre-ignore[6]
+                print(f"    [DUAL] Hook {i+1}: Sonnet={s_total}*{SONNET_WEIGHT} + Haiku={h_total}*{HAIKU_WEIGHT} -> Final={final_total}")
+            
+            # Merge fixes + Haiku diagnostics
+            merged_fixes = list(s_eval.get("fixes", [])) + list(h_eval.get("fixes", []))  # pyre-ignore[6]
+            merged.append({**s_eval, "total": final_total, "fixes": merged_fixes,
+                          "sonnet_score": s_total, "haiku_score": h_total,
+                          "skip_reason": h_eval.get("skip_reason", ""),
+                          "drop_word": h_eval.get("drop_word", "")})
+        return merged
+    
+    # Fallback
     return [{"hook": h, "total": 5.0, "fixes": ["evaluation failed"]} for h in hooks]
 
 
-def refine_hook(client, hook: str, fixes: List[str]) -> str:
-    """Refine a single hook based on fixes."""
-    prompt = HOOK_REFINER_PROMPT.format(hook=hook, fixes=", ".join(fixes))
+def refine_hook(client, hook: str, fixes: List[str], skip_reason: str = "", drop_word: str = "") -> str:
+    """Refine a single hook with targeted viewer diagnostics."""
+    prompt = HOOK_REFINER_PROMPT.format(
+        hook=hook,
+        fixes=", ".join(fixes) if fixes else "none",
+        skip_reason=skip_reason or "no specific reason given",
+        drop_word=drop_word or "unknown"
+    )
     response = invoke_bedrock(client, prompt, temperature=WRITER_TEMPERATURE, max_tokens=50)
     
     # Clean up response
@@ -845,6 +1062,9 @@ def generate_winning_hook(client, topic: str, era: str, context: str = "", angle
     best_hook = None
     best_score = 0.0
     best_fixes = []
+    best_skip_reason = ""
+    best_drop_word = ""
+    first_hook_score = 0.0  # Pre-refine instrumentation
     
     for iteration in range(HOOK_MAX_ITERATIONS):
         stats["iterations"] = iteration + 1
@@ -854,8 +1074,9 @@ def generate_winning_hook(client, topic: str, era: str, context: str = "", angle
             hooks = generate_hooks_batch(client, topic, era, context, angle)
             stats["total_hooks_generated"] += len(hooks)
         else:
-            # Refinement: refine best hook based on fixes
-            refined = refine_hook(client, best_hook, best_fixes)  # pyre-ignore[6]
+            # Targeted refinement: pass Haiku diagnostics to writer
+            refined = refine_hook(client, best_hook, best_fixes,  # pyre-ignore[6]
+                                  best_skip_reason, best_drop_word)
             hooks = [refined]
             stats["total_hooks_generated"] += 1
         
@@ -878,17 +1099,29 @@ def generate_winning_hook(client, topic: str, era: str, context: str = "", angle
                 best_clarity = stats.get("best_clarity", 0)
                 if clarity > best_clarity:
                     is_better = True
-                    print(f"    ↳ Tie-breaker: higher clarity ({clarity}) wins")
+                    print(f"    \u21b3 Tie-breaker: higher clarity ({clarity}) wins")
                 # Second: if clarity same, shorter wins
                 elif clarity == best_clarity and len(hook_text.split()) < len(best_hook.split()):  # pyre-ignore[16]
                     is_better = True
-                    print(f"    ↳ Tie-breaker: shorter hook ({len(hook_text.split())} words)")
+                    print(f"    \u21b3 Tie-breaker: shorter hook ({len(hook_text.split())} words)")
             
             if is_better:
                 best_score = score
                 best_hook = hook_text
                 best_fixes = eval_item.get("fixes", [])
+                best_skip_reason = eval_item.get("skip_reason", "")
+                best_drop_word = eval_item.get("drop_word", "")
                 stats["best_clarity"] = clarity
+                # Log initial vs post-refine scores
+                if iteration == 0:
+                    stats["initial_haiku_score"] = eval_item.get("haiku_score", 0)
+                    first_hook_score = score  # Capture pre-refine score
+                else:
+                    stats["refine_haiku_score"] = eval_item.get("haiku_score", 0)
+        
+        # Capture first iteration's best score (even if not "is_better" on later iterations)
+        if iteration == 0:
+            first_hook_score = best_score
         
         print(f"  Hook iteration {iteration + 1}: best score = {best_score}")  # pyre-ignore[58]
         
@@ -899,7 +1132,8 @@ def generate_winning_hook(client, topic: str, era: str, context: str = "", angle
             break
     
     stats["final_score"] = best_score  # pyre-ignore[26]
-    return best_hook, best_score, stats
+    stats["first_hook_score"] = first_hook_score  # Pre-refine instrumentation
+    return best_hook, best_score, stats  # pyre-ignore[7]
 
 
 # ============================================================================
@@ -945,7 +1179,7 @@ def evaluate_section_variants(
     variants: List[str], 
     hook: str
 ) -> List[dict]:
-    """Evaluate section variants in a single API call."""
+    """Evaluate section variants with dual jury: Sonnet + Haiku."""
     variants_json = json.dumps(variants, ensure_ascii=False)
     prompt = SECTION_EVALUATOR_PROMPT.format(
         section_type=section_type.upper(),
@@ -954,11 +1188,47 @@ def evaluate_section_variants(
         variants_json=variants_json
     )
     
-    response = invoke_bedrock(client, prompt, temperature=EVALUATOR_TEMPERATURE, max_tokens=400)
-    result = parse_json_safe(response, client, prompt, validation_model=models.SectionEvaluationBatch if models else None)
+    # Jury 1: Sonnet
+    response_sonnet = invoke_bedrock(client, prompt, temperature=EVALUATOR_TEMPERATURE, max_tokens=400)
+    result_sonnet = parse_json_safe(response_sonnet, client, prompt, validation_model=models.SectionEvaluationBatch if models else None)
+    evals_sonnet = result_sonnet.get("evaluations", []) if result_sonnet else []
     
-    if result and "evaluations" in result:
-        return result["evaluations"]
+    # Jury 2: Haiku (separate persona -- penalty-based rubric)
+    try:
+        haiku_prompt = HAIKU_SECTION_EVALUATOR_PROMPT.format(
+            section_type=section_type.upper(),
+            hook=hook,
+            variants_json=variants_json
+        )
+        response_haiku = invoke_bedrock(client, haiku_prompt, temperature=EVALUATOR_TEMPERATURE, max_tokens=500, model_id=HAIKU_MODEL_ID)
+        result_haiku = parse_json_safe(response_haiku, client, prompt, validation_model=models.SectionEvaluationBatch if models else None)
+        evals_haiku = result_haiku.get("evaluations", []) if result_haiku else []
+    except Exception as e:
+        print(f"[WARNING] Haiku section eval failed, using Sonnet only: {e}")
+        evals_haiku = []
+    
+    # Merge: weighted scoring with floor guardrail
+    if evals_sonnet:
+        merged = []
+        for i, s_eval in enumerate(evals_sonnet):
+            h_eval = evals_haiku[i] if i < len(evals_haiku) else {}  # pyre-ignore[6]
+            s_total = min(10.0, max(0.0, float(s_eval.get("total", 6.0))))  # clamp 0-10
+            h_total = min(10.0, max(0.0, float(h_eval.get("total", s_total))))  # clamp 0-10
+            
+            # Floor guardrail
+            if s_total < SONNET_FLOOR:
+                final_total = s_total
+                print(f"    [DUAL] {section_type.upper()} variant {i+1}: Sonnet={s_total} BELOW FLOOR ({SONNET_FLOOR}) -> Final={final_total}")
+            else:
+                final_total = round(s_total * SONNET_WEIGHT + h_total * HAIKU_WEIGHT, 1)  # pyre-ignore[6]
+                print(f"    [DUAL] {section_type.upper()} variant {i+1}: Sonnet={s_total}*{SONNET_WEIGHT} + Haiku={h_total}*{HAIKU_WEIGHT} -> Final={final_total}")
+            
+            merged_fixes = list(s_eval.get("fixes", [])) + list(h_eval.get("fixes", []))  # pyre-ignore[6]
+            merged.append({**s_eval, "total": final_total, "fixes": merged_fixes,
+                          "sonnet_score": s_total, "haiku_score": h_total,
+                          "skip_reason": h_eval.get("skip_reason", ""),
+                          "drop_word": h_eval.get("drop_word", "")})
+        return merged
     
     return [{"text": v, "total": 6.0, "fixes": ["evaluation failed"]} for v in variants]
 
@@ -968,14 +1238,18 @@ def refine_section(
     section_type: str, 
     text: str, 
     fixes: List[str], 
-    hook: str
+    hook: str,
+    skip_reason: str = "",
+    drop_word: str = ""
 ) -> str:
-    """Refine a section based on fixes."""
+    """Refine a section with targeted viewer diagnostics."""
     prompt = SECTION_REFINER_PROMPT.format(
         section_type=section_type.upper(),
         text=text,
-        fixes=", ".join(fixes),
-        hook=hook
+        fixes=", ".join(fixes) if fixes else "none",
+        hook=hook,
+        skip_reason=skip_reason or "no specific reason given",
+        drop_word=drop_word or "unknown"
     )
     response = invoke_bedrock(client, prompt, temperature=WRITER_TEMPERATURE, max_tokens=150)
     return response.strip()
@@ -999,6 +1273,8 @@ def generate_winning_section(
     best_text = None
     best_score = 0.0
     best_fixes = []
+    best_skip_reason = ""
+    best_drop_word = ""
     
     for iteration in range(SECTION_MAX_ITERATIONS):
         stats["iterations"] = iteration + 1
@@ -1008,8 +1284,9 @@ def generate_winning_section(
             variants = generate_section_variants(client, section_type, hook, topic, era, context, angle)
             stats["variants_generated"] += len(variants)
         else:
-            # Refinement
-            refined = refine_section(client, section_type, best_text, best_fixes, hook)  # pyre-ignore[6]
+            # Targeted refinement: pass Haiku diagnostics to writer
+            refined = refine_section(client, section_type, best_text, best_fixes, hook,  # pyre-ignore[6]
+                                      best_skip_reason, best_drop_word)
             variants = [refined]
             stats["variants_generated"] += 1
         
@@ -1040,6 +1317,8 @@ def generate_winning_section(
                 best_score = score
                 best_text = text
                 best_fixes = eval_item.get("fixes", [])
+                best_skip_reason = eval_item.get("skip_reason", "")
+                best_drop_word = eval_item.get("drop_word", "")
                 best_punch = punch
         
         print(f"  {section_type.upper()} iteration {iteration + 1}: best score = {best_score}")  # pyre-ignore[16]
@@ -1057,13 +1336,47 @@ def generate_winning_section(
 # ============================================================================
 
 def evaluate_full_script(client, full_script: str) -> dict:
-    """Evaluate the complete assembled script."""
+    """Evaluate complete script with dual jury: Sonnet + Haiku."""
     prompt = FINAL_EVALUATOR_PROMPT.format(full_script=full_script)
-    response = invoke_bedrock(client, prompt, temperature=EVALUATOR_TEMPERATURE, max_tokens=200)
-    result = parse_json_safe(response, client, prompt, validation_model=models.FinalEvaluation if models else None)
     
-    if result:
-        return result
+    # Jury 1: Sonnet
+    response_sonnet = invoke_bedrock(client, prompt, temperature=EVALUATOR_TEMPERATURE, max_tokens=200)
+    result_sonnet = parse_json_safe(response_sonnet, client, prompt, validation_model=models.FinalEvaluation if models else None)
+    
+    # Jury 2: Haiku (separate persona -- penalty-based rubric)
+    try:
+        haiku_prompt = HAIKU_FINAL_EVALUATOR_PROMPT.format(full_script=full_script)
+        response_haiku = invoke_bedrock(client, haiku_prompt, temperature=EVALUATOR_TEMPERATURE, max_tokens=300, model_id=HAIKU_MODEL_ID)
+        result_haiku = parse_json_safe(response_haiku, client, prompt, validation_model=models.FinalEvaluation if models else None)
+    except Exception as e:
+        print(f"[WARNING] Haiku final eval failed, using Sonnet only: {e}")
+        result_haiku = None
+    
+    if result_sonnet:
+        s_total = min(10.0, max(0.0, float(result_sonnet.get("total", 7.0))))  # clamp 0-10
+        h_total = min(10.0, max(0.0, float(result_haiku.get("total", s_total)))) if result_haiku else s_total  # clamp 0-10
+        
+        # Floor guardrail
+        if s_total < SONNET_FLOOR:
+            final_total = s_total
+            print(f"    [DUAL] FINAL: Sonnet={s_total} BELOW FLOOR ({SONNET_FLOOR}) -> Final={final_total}")
+        else:
+            final_total = round(s_total * SONNET_WEIGHT + h_total * HAIKU_WEIGHT, 1)  # pyre-ignore[6]
+            print(f"    [DUAL] FINAL: Sonnet={s_total}*{SONNET_WEIGHT} + Haiku={h_total}*{HAIKU_WEIGHT} -> Final={final_total}")
+        
+        # Use Sonnet's qualitative feedback but weighted score
+        result_sonnet["total"] = final_total
+        result_sonnet["sonnet_score"] = s_total
+        result_sonnet["haiku_score"] = h_total
+        result_sonnet["skip_reason"] = result_haiku.get("skip_reason", "") if result_haiku else ""
+        result_sonnet["drop_word"] = result_haiku.get("drop_word", "") if result_haiku else ""
+        
+        # If Haiku's attention score is lower, prefer its qualitative feedback
+        if result_haiku and h_total < s_total:
+            result_sonnet["weakest_section"] = result_haiku.get("weakest_section", result_sonnet.get("weakest_section"))
+            result_sonnet["fix_suggestion"] = result_haiku.get("fix_suggestion", result_sonnet.get("fix_suggestion"))
+        
+        return result_sonnet
     
     return {"total": 7.0, "weakest_section": "unknown", "fix_suggestion": "evaluation failed"}
 

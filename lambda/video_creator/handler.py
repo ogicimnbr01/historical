@@ -295,6 +295,91 @@ def get_recent_video_topics(limit: int = 50, region_name: Optional[str] = None) 
         logger.warning(f"⚠️ Failed to fetch recent topics: {e}")
         return []
 
+
+def get_category_retention_stats(limit: int = 20, region_name: Optional[str] = None) -> Dict[str, float]:
+    """
+    Compute average retention percentage per category from recent videos.
+    
+    Returns:
+        Dict[str, float]: {category: avg_retention_pct}
+        e.g., {"modern_war": 62.5, "anthropology_and_culture": 48.0}
+    """
+    region = region_name or os.environ.get('AWS_REGION_NAME', 'us-east-1')
+    dynamodb = boto3.resource('dynamodb', region_name=region)
+    table = dynamodb.Table(METRICS_TABLE_NAME)
+    
+    try:
+        response = table.query(
+            IndexName='gsi1_publish_time',
+            KeyConditionExpression='gsi1pk = :pk',
+            ExpressionAttributeValues={':pk': 'VIDEOS'},
+            ScanIndexForward=False,
+            Limit=limit
+        )
+        items = response.get('Items', [])
+        
+        if not items:
+            response = table.scan(Limit=limit * 2)
+            items = response.get('Items', [])
+            items.sort(key=lambda x: x.get('publish_time_utc', ''), reverse=True)
+            items = items[:limit]
+        
+        # Aggregate retention by category
+        cat_data: Dict[str, List[float]] = {}
+        for item in items:
+            category = item.get('category', '')
+            retention = item.get('avg_view_percentage')
+            
+            if category and retention is not None:
+                try:
+                    ret_val = float(retention)
+                    if category not in cat_data:
+                        cat_data[category] = []
+                    cat_data[category].append(ret_val)
+                except (ValueError, TypeError):
+                    continue
+        
+        # Compute averages
+        result = {}
+        for cat, retentions in cat_data.items():
+            avg = sum(retentions) / len(retentions)
+            result[cat] = round(avg, 1)  # pyre-ignore[6]
+            logger.info(f"📊 Category '{cat}': avg retention {avg:.1f}% ({len(retentions)} videos)")
+        
+        return result
+        
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to compute category retention stats: {e}")
+        return {}
+
+
+def get_last_video_category(region_name: Optional[str] = None) -> Optional[str]:
+    """
+    Get the category of the most recently published video.
+    Used for forced diversity logic.
+    """
+    region = region_name or os.environ.get('AWS_REGION_NAME', 'us-east-1')
+    dynamodb = boto3.resource('dynamodb', region_name=region)
+    table = dynamodb.Table(METRICS_TABLE_NAME)
+    
+    try:
+        response = table.query(
+            IndexName='gsi1_publish_time',
+            KeyConditionExpression='gsi1pk = :pk',
+            ExpressionAttributeValues={':pk': 'VIDEOS'},
+            ScanIndexForward=False,
+            Limit=1
+        )
+        items = response.get('Items', [])
+        if items:
+            category = items[0].get('category')
+            logger.info(f"📌 Last video category: {category}")
+            return category
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to get last video category: {e}")
+    
+    return None
+
 def is_similar(new_topic: str, past_topics: list, threshold: float = 0.6) -> bool:
     """Check if new topic is too similar to any past topic using fuzzy matching."""
     if not new_topic:
@@ -436,22 +521,22 @@ def lambda_handler(event, context):
                 logger.info(f"📜 [Attempt {current_try}/{max_retries}] Using user topic: {selected_topic}")
             else:
                 # GLOBAL STRATEGY: Use History Buffet Selector
-                # Get last video's category to force diversity
-                last_category = None
-                if past_topics:
-                    # Try to find last category from DB (not efficient but okay for now)
-                    # For now just pass None, diversity check will still work against past topics list
-                    pass
+                # Fetch last video's category for diversity logic
+                last_category = get_last_video_category(region)
+                
+                # Fetch retention stats per category for wave surfing
+                category_retention = get_category_retention_stats(limit=20, region_name=region)
                  
                 # Get category weights from autopilot
                 category_weights = cast(Dict[str, Any], autopilot_config).get('category_weights')
                 
-                # Select Topic
+                # Select Topic (with retention-aware diversity)
                 safe_past_topics = cast(List[str], past_topics) if past_topics else []
                 topic_data, selected_category = select_next_topic(
                     past_topics=[*safe_past_topics, *failed_topics_accumulator],
                     category_weights=category_weights,
-                    last_category=None # we could fetch this if we stored it separately
+                    last_category=last_category,
+                    category_retention=category_retention
                 )
                 
                 selected_topic = topic_data['topic']
@@ -698,17 +783,37 @@ def lambda_handler(event, context):
                     region_name=region
                 )
                 
-                # Update with category (using update_item since save_video doesn't have it yet)
-                # We need to add 'category' to the item
+                # Save additional calibration fields (category + refine counts + score deltas)
+                # These are critical for sterilization and self-optimization detection
                 try:
+                    pipeline_stats = script.get('pipeline_stats', {})
+                    attempts = pipeline_stats.get('attempts', {})
+                    hook_refines = max(0, int(attempts.get('hook', 1)) - 1)  # -1 because first gen isn't a refine
+                    context_refines = max(0, int(attempts.get('context', 1)) - 1)
+                    body_refines = max(0, int(attempts.get('body', 1)) - 1)
+                    outro_refines = max(0, int(attempts.get('outro', 1)) - 1)
+                    refine_total = hook_refines + context_refines + body_refines + outro_refines
+                    
+                    # Hook score delta instrumentation (pre-refine vs post-refine)
+                    hook_stats = pipeline_stats.get('hook', {})
+                    first_hook_score_val = float(hook_stats.get('first_hook_score', hook_score))
+                    final_hook_score_val = float(hook_stats.get('final_score', hook_score))
+                    
                     metrics_table = boto3.resource('dynamodb', region_name=region).Table(METRICS_TABLE_NAME)
                     metrics_table.update_item(
                         Key={'video_id': internal_video_id},
-                        UpdateExpression="SET category = :c",
-                        ExpressionAttributeValues={':c': final_category}
+                        UpdateExpression="SET category = :c, refine_total = :rt, hook_refines = :hr, first_hook_score = :fhs, final_hook_score = :fls",
+                        ExpressionAttributeValues={
+                            ':c': final_category,
+                            ':rt': refine_total,
+                            ':hr': hook_refines,
+                            ':fhs': str(first_hook_score_val),  # DynamoDB Decimal workaround
+                            ':fls': str(final_hook_score_val),
+                        }
                     )
+                    logger.info(f"📊 Calibration data saved: refine_total={refine_total} | hook_score_delta={first_hook_score_val}→{final_hook_score_val}")
                 except Exception as e:
-                    logger.warning(f"⚠️ Failed to save category tag: {e}")
+                    logger.warning(f"⚠️ Failed to save calibration extras: {e}")
 
                 logger.info(f"[CALIBRATION] Saved: {pipeline_executed} | mode={pipeline_mode} | hook_family={hook_family} | category={final_category}")
             except Exception as e:

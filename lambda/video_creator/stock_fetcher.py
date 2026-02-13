@@ -576,8 +576,9 @@ def generate_historical_video(prompt: str, segment_index: int = 0) -> Optional[s
                 f"scale=1080:1920:force_original_aspect_ratio=increase,"
                 f"crop=1080:1920,"
                 
-                # Step 2: Ken Burns zoom with subtle pan
-                f"zoompan=z='if(lte(zoom,1.0),1.001,min(zoom+0.0005,1.15))':x='iw/2-(iw/zoom/2)+sin(on/100)*20':y='ih/2-(ih/zoom/2)':d=240:s=1080x1920:fps=30,"
+                # Step 2: AGGRESSIVE Ken Burns zoom with fast pan
+                # 3x faster zoom + 2x wider pan = cinematic kinetic energy
+                f"zoompan=z='if(lte(zoom,1.0),1.001,min(zoom+0.0015,1.25))':x='iw/2-(iw/zoom/2)+sin(on/50)*40':y='ih/2-(ih/zoom/2)':d=240:s=1080x1920:fps=30,"
                 
                 # Step 3: Fade in for reveal effect
                 f"fade=in:0:24,"  # 0.8s fade
