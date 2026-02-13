@@ -4,144 +4,158 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calibration Admin Panel</title>
+    <title>Historical Shorts — Command Center</title>
     <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
 
 <body>
     <div id="app">
-        <header class="header">
-            <h1>📊 Calibration Admin</h1>
-            <div class="api-key-container">
-                <input type="password" id="apiKeyInput" placeholder="API Key" />
-                <button onclick="setApiKey()">Set</button>
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-brand">
+                <span class="brand-icon">🎬</span>
+                <div class="brand-text">
+                    <span class="brand-name">Historical</span>
+                    <span class="brand-sub">Command Center</span>
+                </div>
             </div>
-        </header>
 
-        <nav class="nav">
-            <button class="nav-btn active" onclick="showDashboard()">Dashboard</button>
-            <button class="nav-btn" onclick="showVideoList()">Videos</button>
-            <button class="nav-btn" onclick="showSystemActivity()">🚀 System Activity</button>
-        </nav>
+            <nav class="sidebar-nav">
+                <button class="nav-item active" data-page="dashboard" onclick="navigateTo('dashboard')">
+                    <span class="nav-icon">📊</span>
+                    <span class="nav-label">Dashboard</span>
+                </button>
+                <button class="nav-item" data-page="videos" onclick="navigateTo('videos')">
+                    <span class="nav-icon">🎬</span>
+                    <span class="nav-label">Videos</span>
+                </button>
+                <button class="nav-item" data-page="analytics" onclick="navigateTo('analytics')">
+                    <span class="nav-icon">🔬</span>
+                    <span class="nav-label">Analytics</span>
+                </button>
+                <button class="nav-item" data-page="generate" onclick="navigateTo('generate')">
+                    <span class="nav-icon">🚀</span>
+                    <span class="nav-label">Generate</span>
+                </button>
+                <button class="nav-item" data-page="jobs" onclick="navigateTo('jobs')">
+                    <span class="nav-icon">⚡</span>
+                    <span class="nav-label">Jobs</span>
+                </button>
+            </nav>
 
-        <main id="content">
-            <!-- Dashboard Section -->
-            <section id="dashboard" class="section">
-                <h2>Dashboard</h2>
-                <div class="stats-grid" id="statsGrid">
-                    <div class="stat-card">
-                        <span class="stat-value" id="statTotal">-</span>
-                        <span class="stat-label">Total Videos</span>
+            <div class="sidebar-footer">
+                <div class="api-key-section">
+                    <input type="password" id="apiKeyInput" placeholder="API Key" />
+                    <button onclick="setApiKey()" class="btn-key">🔑</button>
+                </div>
+                <div class="connection-status" id="connectionStatus">
+                    <span class="status-dot offline"></span>
+                    <span class="status-text">Disconnected</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- ============================================================ -->
+            <!-- DASHBOARD PAGE -->
+            <!-- ============================================================ -->
+            <section id="page-dashboard" class="page active">
+                <div class="page-header">
+                    <h1>Dashboard</h1>
+                    <button class="btn-refresh" onclick="loadDashboard()">↻ Refresh</button>
+                </div>
+
+                <!-- KPI Cards Row -->
+                <div class="kpi-grid">
+                    <div class="kpi-card">
+                        <div class="kpi-value" id="kpiTotal">—</div>
+                        <div class="kpi-label">Total Videos</div>
+                        <div class="kpi-trend" id="kpiTotalTrend"></div>
                     </div>
-                    <div class="stat-card eligible">
-                        <span class="stat-value" id="statEligible">-</span>
-                        <span class="stat-label">Eligible</span>
+                    <div class="kpi-card accent-green">
+                        <div class="kpi-value" id="kpiComplete">—</div>
+                        <div class="kpi-label">Complete</div>
                     </div>
-                    <div class="stat-card pending">
-                        <span class="stat-value" id="statPending">-</span>
-                        <span class="stat-label">Pending</span>
+                    <div class="kpi-card accent-blue">
+                        <div class="kpi-value" id="kpiEligible">—</div>
+                        <div class="kpi-label">Eligible</div>
                     </div>
-                    <div class="stat-card complete">
-                        <span class="stat-value" id="statComplete">-</span>
-                        <span class="stat-label">Complete</span>
+                    <div class="kpi-card accent-yellow">
+                        <div class="kpi-value" id="kpiPending">—</div>
+                        <div class="kpi-label">Pending</div>
                     </div>
-                    <div class="stat-card failed">
-                        <span class="stat-value" id="statFailed">-</span>
-                        <span class="stat-label">Failed</span>
+                    <div class="kpi-card accent-red">
+                        <div class="kpi-value" id="kpiFailed">—</div>
+                        <div class="kpi-label">Failed</div>
                     </div>
-                    <div class="stat-card test">
-                        <span class="stat-value" id="statTest">-</span>
-                        <span class="stat-label">Test</span>
+                    <div class="kpi-card accent-orange">
+                        <div class="kpi-value" id="kpiTest">—</div>
+                        <div class="kpi-label">Test</div>
                     </div>
                 </div>
 
-                <div class="metrics-row">
-                    <div class="metric-card">
-                        <span class="metric-value" id="metricMAE">-</span>
-                        <span class="metric-label">MAE (Retention %)</span>
+                <!-- Calibration Metrics -->
+                <div class="section-title">
+                    <h2>🔬 Calibration Metrics</h2>
+                </div>
+                <div class="metrics-grid">
+                    <div class="metric-card glass">
+                        <div class="metric-header">
+                            <span class="metric-icon">📏</span>
+                            <span class="metric-name">MAE</span>
+                        </div>
+                        <div class="metric-value" id="metricMAE">—</div>
+                        <div class="metric-desc">Mean Absolute Error (retention %)</div>
                     </div>
-                    <div class="metric-card">
-                        <span class="metric-value" id="metricCorr">-</span>
-                        <span class="metric-label">Correlation</span>
+                    <div class="metric-card glass">
+                        <div class="metric-header">
+                            <span class="metric-icon">📈</span>
+                            <span class="metric-name">Correlation</span>
+                        </div>
+                        <div class="metric-value" id="metricCorr">—</div>
+                        <div class="metric-desc">Predicted ↔ Actual retention</div>
                     </div>
-                    <div class="metric-card">
-                        <span class="metric-value" id="metricSample">-</span>
-                        <span class="metric-label">Sample Size</span>
+                    <div class="metric-card glass">
+                        <div class="metric-header">
+                            <span class="metric-icon">🧪</span>
+                            <span class="metric-name">Sample Size</span>
+                        </div>
+                        <div class="metric-value" id="metricSample">—</div>
+                        <div class="metric-desc">Eligible complete videos</div>
                     </div>
-                    <div class="metric-card">
-                        <span class="metric-value" id="metricEligibleRate">-</span>
-                        <span class="metric-label">Eligible Rate</span>
+                    <div class="metric-card glass">
+                        <div class="metric-header">
+                            <span class="metric-icon">✅</span>
+                            <span class="metric-name">Eligible Rate</span>
+                        </div>
+                        <div class="metric-value" id="metricEligibleRate">—</div>
+                        <div class="metric-desc">Videos usable for calibration</div>
                     </div>
                 </div>
 
-                <!-- Generate Video Card -->
-                <div class="generate-card">
-                    <h3>🎬 Generate Video</h3>
-                    <div class="generate-form">
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="genMode">Mode</label>
-                                <select id="genMode">
-                                    <option value="auto">Auto (Autopilot)</option>
-                                    <option value="quality">Quality</option>
-                                    <option value="fast">Fast</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label for="genTitleVariant">Title Variant</label>
-                                <select id="genTitleVariant">
-                                    <option value="auto">Auto</option>
-                                    <option value="bold">Bold</option>
-                                    <option value="safe">Safe</option>
-                                    <option value="experimental">Experimental</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group full-width">
-                                <label for="genTopic">Topic Override (optional)</label>
-                                <input type="text" id="genTopic" placeholder="e.g., 'The history of coffee'">
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="toggle-label">
-                                    <input type="checkbox" id="genEligible" checked>
-                                    Calibration Eligible
-                                </label>
-                            </div>
-                        </div>
-                        <div class="form-actions">
-                            <button class="btn-primary" onclick="generateVideo()">🚀 Generate Now</button>
-                            <button class="btn-secondary" onclick="generateTestVideo()">🧪 Generate & Mark TEST</button>
-                        </div>
-                    </div>
+                <!-- Recent Videos Quick View -->
+                <div class="section-title">
+                    <h2>📋 Recent Videos</h2>
+                    <button class="btn-text" onclick="navigateTo('videos')">View All →</button>
+                </div>
+                <div class="recent-videos" id="recentVideos">
+                    <div class="empty-state">Loading...</div>
                 </div>
             </section>
 
-            <!-- System Activity Section -->
-            <section id="systemActivity" class="section hidden">
-                <h2>🚀 System Activity</h2>
-                <div class="activity-controls">
-                    <button class="refresh-btn" onclick="loadSystemActivity()">🔄 Refresh</button>
-                    <select id="jobStatusFilter" onchange="loadSystemActivity()">
-                        <option value="">All Status</option>
-                        <option value="queued">Queued</option>
-                        <option value="running">Running</option>
-                        <option value="completed">Completed</option>
-                        <option value="failed">Failed</option>
-                    </select>
+            <!-- ============================================================ -->
+            <!-- VIDEOS PAGE -->
+            <!-- ============================================================ -->
+            <section id="page-videos" class="page">
+                <div class="page-header">
+                    <h1>Video Library</h1>
+                    <button class="btn-refresh" onclick="loadVideos()">↻ Refresh</button>
                 </div>
-                <div class="jobs-timeline" id="jobsTimeline">
-                    <p class="loading-text">Loading jobs...</p>
-                </div>
-            </section>
 
-            <!-- Video List Section -->
-            <section id="videoList" class="section hidden">
-                <h2>Videos</h2>
-
-                <div class="filters">
+                <!-- Filters Bar -->
+                <div class="filters-bar">
                     <select id="filterStatus" onchange="loadVideos()">
                         <option value="">All Status</option>
                         <option value="pending">Pending</option>
@@ -163,73 +177,257 @@
                     <select id="filterFallback" onchange="loadVideos()">
                         <option value="">All Pipeline</option>
                         <option value="true">Fallback Only</option>
-                        <option value="false">v2.3 Only</option>
+                        <option value="false">v2.4 Only</option>
                     </select>
-                    <button class="refresh-btn" onclick="loadVideos()">🔄 Refresh</button>
+                    <div class="filter-spacer"></div>
+                    <div class="bulk-actions">
+                        <button onclick="markSelectedAsTest()" class="btn-sm btn-outline">Mark TEST</button>
+                        <span class="selected-count" id="selectedCount">0 selected</span>
+                    </div>
                 </div>
 
-                <div class="bulk-actions">
-                    <button onclick="markSelectedAsTest()" class="bulk-btn">Mark Selected as TEST</button>
-                    <span id="selectedCount">0 selected</span>
+                <!-- Videos Table -->
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th class="th-check"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
+                                <th>Title</th>
+                                <th>Date</th>
+                                <th>Category</th>
+                                <th>Mode</th>
+                                <th>Hook</th>
+                                <th>Predicted</th>
+                                <th>Actual</th>
+                                <th>Δ Refine</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="videosTableBody">
+                        </tbody>
+                    </table>
                 </div>
-
-                <table class="videos-table">
-                    <thead>
-                        <tr>
-                            <th><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
-                            <th>Video ID</th>
-                            <th>Title</th>
-                            <th>Date</th>
-                            <th>Mode</th>
-                            <th>Predicted</th>
-                            <th>Actual</th>
-                            <th>Pipeline</th>
-                            <th>Eligible</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="videosTableBody">
-                    </tbody>
-                </table>
             </section>
 
-            <!-- Video Detail Modal -->
-            <div id="videoModal" class="modal hidden">
-                <div class="modal-content">
-                    <span class="close" onclick="closeModal()">&times;</span>
-                    <h2 id="modalTitle">Video Details</h2>
-                    <div id="modalBody"></div>
+            <!-- ============================================================ -->
+            <!-- ANALYTICS PAGE -->
+            <!-- ============================================================ -->
+            <section id="page-analytics" class="page">
+                <div class="page-header">
+                    <h1>Analytics & Calibration</h1>
+                    <button class="btn-refresh" onclick="loadAnalytics()">↻ Refresh</button>
                 </div>
-            </div>
 
-            <!-- Logs Modal -->
-            <div id="logsModal" class="modal hidden">
-                <div class="modal-content wide">
-                    <span class="close" onclick="closeLogsModal()">&times;</span>
-                    <h2 id="logsModalTitle">📋 Job Logs</h2>
-                    <div class="logs-filters">
-                        <select id="logComponentFilter" onchange="filterLogs()">
-                            <option value="">All Components</option>
-                            <option value="video_generator">video_generator</option>
-                            <option value="analytics_fetcher">analytics_fetcher</option>
-                            <option value="decision_engine">decision_engine</option>
-                        </select>
-                        <select id="logLevelFilter" onchange="filterLogs()">
-                            <option value="">All Levels</option>
-                            <option value="INFO">INFO</option>
-                            <option value="WARN">WARN</option>
-                            <option value="ERROR">ERROR</option>
-                        </select>
+                <!-- Refine Delta Analysis -->
+                <div class="section-title">
+                    <h2>🔬 Refine Delta Analysis</h2>
+                </div>
+                <div class="analytics-grid">
+                    <div class="analytics-card wide">
+                        <h3>Hook Score Delta Distribution</h3>
+                        <div class="chart-area" id="deltaChart">
+                            <div class="empty-state">Loading data...</div>
+                        </div>
                     </div>
-                    <div id="logsContainer" class="logs-container"></div>
+                    <div class="analytics-card">
+                        <h3>Avg Hook Score Delta</h3>
+                        <div class="big-metric" id="avgDelta">—</div>
+                        <div class="metric-sub">first → final hook score change</div>
+                    </div>
+                    <div class="analytics-card">
+                        <h3>Goodhart Risk</h3>
+                        <div class="big-metric" id="goodhartStatus">—</div>
+                        <div class="metric-sub" id="goodhartDesc">Pearson(delta, retention)</div>
+                    </div>
                 </div>
-            </div>
 
-            <!-- Toast container -->
-            <div id="toastContainer" class="toast-container"></div>
+                <!-- Category Performance -->
+                <div class="section-title">
+                    <h2>📊 Category Performance</h2>
+                </div>
+                <div class="analytics-grid">
+                    <div class="analytics-card wide">
+                        <h3>Retention by Category</h3>
+                        <div class="chart-area" id="categoryChart">
+                            <div class="empty-state">Loading data...</div>
+                        </div>
+                    </div>
+                    <div class="analytics-card">
+                        <h3>Refine Bucket Curve</h3>
+                        <div class="chart-area" id="refineChart">
+                            <div class="empty-state">Loading data...</div>
+                        </div>
+                    </div>
+                    <div class="analytics-card">
+                        <h3>Mode Comparison</h3>
+                        <div class="chart-area" id="modeChart">
+                            <div class="empty-state">Loading data...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Predicted vs Actual Scatter -->
+                <div class="section-title">
+                    <h2>🎯 Calibration Scatter</h2>
+                </div>
+                <div class="analytics-grid">
+                    <div class="analytics-card extra-wide">
+                        <h3>Predicted vs Actual Retention</h3>
+                        <div class="chart-area tall" id="scatterChart">
+                            <div class="empty-state">Loading data...</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!-- GENERATE PAGE -->
+            <!-- ============================================================ -->
+            <section id="page-generate" class="page">
+                <div class="page-header">
+                    <h1>Generate Video</h1>
+                </div>
+
+                <div class="generate-container">
+                    <div class="gen-card glass">
+                        <div class="gen-card-header">
+                            <span class="gen-icon">🎬</span>
+                            <h2>New Video</h2>
+                        </div>
+
+                        <div class="gen-form">
+                            <div class="gen-row">
+                                <div class="gen-field">
+                                    <label>Mode</label>
+                                    <select id="genMode">
+                                        <option value="auto">🤖 Auto (Autopilot)</option>
+                                        <option value="quality">💎 Quality</option>
+                                        <option value="fast">⚡ Fast</option>
+                                    </select>
+                                </div>
+                                <div class="gen-field">
+                                    <label>Title Variant</label>
+                                    <select id="genTitleVariant">
+                                        <option value="auto">Auto</option>
+                                        <option value="bold">Bold</option>
+                                        <option value="safe">Safe</option>
+                                        <option value="experimental">Experimental</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="gen-field">
+                                <label>Topic Override <span class="optional">(optional)</span></label>
+                                <input type="text" id="genTopic" placeholder="e.g., 'The mystery of the Voynich manuscript'" />
+                            </div>
+
+                            <div class="gen-field">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="genEligible" checked>
+                                    <span class="checkbox-custom"></span>
+                                    Calibration Eligible
+                                </label>
+                            </div>
+
+                            <div class="gen-actions">
+                                <button class="btn-generate" onclick="generateVideo()">
+                                    <span class="btn-icon">🚀</span>
+                                    Generate Now
+                                </button>
+                                <button class="btn-generate-test" onclick="generateTestVideo()">
+                                    <span class="btn-icon">🧪</span>
+                                    Generate TEST
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quick Stats -->
+                    <div class="gen-stats">
+                        <div class="gen-stat-card">
+                            <div class="gen-stat-value" id="genStatToday">—</div>
+                            <div class="gen-stat-label">Today's Videos</div>
+                        </div>
+                        <div class="gen-stat-card">
+                            <div class="gen-stat-value" id="genStatWeek">—</div>
+                            <div class="gen-stat-label">This Week</div>
+                        </div>
+                        <div class="gen-stat-card">
+                            <div class="gen-stat-value" id="genStatAvgRet">—</div>
+                            <div class="gen-stat-label">Avg Retention</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!-- JOBS PAGE -->
+            <!-- ============================================================ -->
+            <section id="page-jobs" class="page">
+                <div class="page-header">
+                    <h1>System Activity</h1>
+                    <div class="header-actions">
+                        <select id="jobStatusFilter" onchange="loadJobs()">
+                            <option value="">All Status</option>
+                            <option value="queued">Queued</option>
+                            <option value="running">Running</option>
+                            <option value="completed">Completed</option>
+                            <option value="failed">Failed</option>
+                        </select>
+                        <button class="btn-refresh" onclick="loadJobs()">↻ Refresh</button>
+                    </div>
+                </div>
+
+                <div class="jobs-timeline" id="jobsTimeline">
+                    <div class="empty-state">Loading jobs...</div>
+                </div>
+            </section>
         </main>
     </div>
+
+    <!-- ============================================================ -->
+    <!-- VIDEO DETAIL MODAL -->
+    <!-- ============================================================ -->
+    <div id="videoModal" class="modal-overlay hidden">
+        <div class="modal-panel">
+            <div class="modal-header">
+                <h2 id="modalTitle">Video Details</h2>
+                <button class="modal-close" onclick="closeModal()">✕</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+        </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- LOGS MODAL -->
+    <!-- ============================================================ -->
+    <div id="logsModal" class="modal-overlay hidden">
+        <div class="modal-panel wide">
+            <div class="modal-header">
+                <h2 id="logsModalTitle">📋 Job Logs</h2>
+                <button class="modal-close" onclick="closeLogsModal()">✕</button>
+            </div>
+            <div class="logs-filters">
+                <select id="logComponentFilter" onchange="filterLogs()">
+                    <option value="">All Components</option>
+                    <option value="video_generator">video_generator</option>
+                    <option value="analytics_fetcher">analytics_fetcher</option>
+                    <option value="decision_engine">decision_engine</option>
+                </select>
+                <select id="logLevelFilter" onchange="filterLogs()">
+                    <option value="">All Levels</option>
+                    <option value="INFO">INFO</option>
+                    <option value="WARN">WARN</option>
+                    <option value="ERROR">ERROR</option>
+                </select>
+            </div>
+            <div id="logsContainer" class="logs-container"></div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toastContainer" class="toast-container"></div>
 
     <script src="app.js"></script>
 </body>
