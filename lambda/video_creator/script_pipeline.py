@@ -58,18 +58,18 @@ WRITER_MAX_TOKENS = 600
 EVALUATOR_MAX_TOKENS = 400
 
 # Quality thresholds (QUALITY mode - default)
-HOOK_THRESHOLD = 9.0          # Hook must score >= 9.0
-SECTION_THRESHOLD = 8.5       # Each section must score >= 8.5
+HOOK_THRESHOLD = 8.5          # Hook must score >= 8.5 (was 9.0)
+SECTION_THRESHOLD = 8.0       # Each section must score >= 8.0 (was 8.5)
 FINAL_THRESHOLD = 8.5         # Combined script must score >= 8.5
 
 # Dual jury scoring weights
 SONNET_WEIGHT = 0.4            # Structure guardian weight
 HAIKU_WEIGHT = 0.6             # Attention guardian weight
-SONNET_FLOOR = 6.5             # Min Sonnet score to even consider publishing
+SONNET_FLOOR = 6.0             # Min Sonnet score to even consider publishing (was 6.5)
 
 # Iteration limits
-HOOK_MAX_ITERATIONS = 5       # Max hook refinement rounds
-SECTION_MAX_ITERATIONS = 3    # Max section refinement rounds
+HOOK_MAX_ITERATIONS = 3       # Max hook refinement rounds (was 5)
+SECTION_MAX_ITERATIONS = 2    # Max section refinement rounds (was 3)
 
 # Retry settings for throttling
 MAX_RETRIES = 5
@@ -111,8 +111,9 @@ def format_prompt_memory() -> str:
     return "\n".join(sections)
 JITTER_MAX = 0.3              # Max random jitter (0-30% of backoff)
 
-# Cost control limits
-MAX_API_CALLS_PER_VIDEO = 30  # Increased from 18 to 30 for quality scripts
+# API Safety Limits
+MAX_API_CALLS_PER_VIDEO = 50  # Max calls per script generation (was 30)
+CALL_WINDOW = 600   # Seconds
 MAX_REPAIR_ATTEMPTS = 1       # JSON repair limit per call
 
 # Tie-breaker settings (when scores are close)
@@ -168,12 +169,17 @@ def get_threshold(key: str) -> float:
 ERA_ENUM = [
     "ancient",        # Before 500 AD (Egypt, Rome, Greece, China)
     "medieval",       # 500-1500 AD (Knights, Vikings, Crusades)
-    "ottoman",        # 1300-1922 AD (Ottoman Empire specific)
+    "ottoman_empire", # 1300-1922 AD (Ottoman Empire specific)
     "early_modern",   # 1500-1800 AD (Renaissance, Colonization)
     "19th_century",   # 1800-1900 AD (Napoleon, Industrial Revolution)
     "early_20th",     # 1900-1945 AD (World Wars, Depression)
+    "early_20th_western", # 1920s Roaring 20s, Gangsters, Noir
     "modern",         # 1945-2000 AD (Cold War, Space Age)
     "21st",           # 2000+ AD (Digital Age)
+    # CULTURAL KEYS
+    "feudal_japan",      # Samurai, Temples, Edo Period
+    "ancient_mesoamerica", # Aztec, Maya, Inca
+    "indigenous_culture",  # tribal, ritual, nature
 ]
 
 def normalize_era(era: str) -> str:
@@ -189,12 +195,19 @@ def normalize_era(era: str) -> str:
     
     # Fuzzy matching
     era_mapping = {
+        # CULTURAL KEYS (Priority Match) - Check these FIRST
+        "feudal_japan": ["samurai", "shogun", "edo", "japan", "ninja", "katana", "zen", "monk"],
+        "ancient_mesoamerica": ["aztec", "maya", "inca", "pyramid", "jungle"],
+        "indigenous_culture": ["tribe", "tribal", "indigenous", "native", "ritual", "ceremony", "native american"],
+        "ottoman_empire": ["ottoman", "turkish", "sultan", "constantinople", "suleiman"],
+        
+        # HISTORICAL PERIODS
         "ancient": ["egypt", "roman", "greek", "classical", "bronze", "iron"],
         "medieval": ["middle age", "knight", "viking", "crusade", "feudal"],
-        "ottoman": ["ottoman", "turkish", "sultan", "constantinople"],
         "early_modern": ["renaissance", "colonial", "enlightenment"],
         "19th_century": ["napoleon", "victorian", "industrial", "1800"],
-        "early_20th": ["ww1", "ww2", "world war", "1900", "1920", "1930", "1940"],
+        "early_20th": ["ww1", "ww2", "world war", "1900", "1910", "1940"],
+        "early_20th_western": ["1920", "1930", "bootlegger", "mafia", "gangster", "noir", "jazz", "capone"],
         "modern": ["cold war", "1950", "1960", "1970", "1980", "1990"],
         "21st": ["2000", "internet", "digital", "21st"],
     }
@@ -438,7 +451,7 @@ ERA: {era}
 {angle_block}
 
 RULES:
-- Each hook: 6-12 words
+- Each hook: 6-10 words (STRICT - videos must be 15-18sec total)
 - Must create "Wait, WHAT?!" reaction
 - Use: contradiction, shock, accusation, or paradox
 - NO: "Did you know", "In [year]", "Have you ever wondered"
@@ -486,10 +499,11 @@ VIEWER ATTENTION DIAGNOSTICS:
 ORIGINAL HOOK: {hook}
 
 REWRITE CONSTRAINTS:
-- 6-12 words, punchy, scroll-stopping.
+- MAX 8 words STRICT (for 16s target). Short, punchy, scroll-stopping.
 - SPECIFICALLY fix the drop point — that word/phrase must change or disappear.
 - The new hook must create a curiosity gap the old one lacked.
 - Do NOT just rephrase — change the PSYCHOLOGY of the hook.
+- NO ellipsis (...). Use flowing sentences to prevent TTS pausing.
 
 Return ONLY the new hook text, nothing else."""
 
@@ -592,7 +606,7 @@ HARD CEILINGS (these are ABSOLUTE — you CANNOT score above these no matter wha
 PENALTIES (subtract from 10):
 - Starts with year/date ("In 1453...") → -3
 - Uses "Did you know" or "Have you ever wondered" → -4
-- Longer than 12 words → -1 per extra word
+- Longer than 10 words → -1 per extra word
 - Feels like it belongs on History Channel → -2
 - You've seen similar hooks before → -2
 
@@ -698,28 +712,25 @@ CRITICAL: Respond ONLY with valid JSON. No markdown. No explanations. All scores
 
 SECTION_RULES = {
     "context": """
-CRISIS RULES (1-2 sentences):
-- CREATE A CRISIS in 5 seconds: who is in danger? what's at stake? what's about to go wrong?
-- Make it VISUAL and SPECIFIC — paint a scene, not a Wikipedia summary
-- The viewer must feel "oh no, then what happened?!"
-- Use present tense for urgency: "1932. Crops are dying. Farmers are desperate."
-- Max 25 words""",
+CRISIS RULES (1 sentence MAX):
+- CREATE A CRISIS: who is in danger? what's at stake?
+- VISUAL and SPECIFIC — paint a scene, not Wikipedia
+- Present tense: "1932. Crops dying. Farmers starve."
+- MAX 10 WORDS STRICT (for 16s total video)
+- NO ellipsis (...). Flowing sentences only.""",
     "body": """
-ESCALATION RULES (2-4 short sentences):
-- Make the crisis WORSE — things escalate, not explain
-- Add an unexpected detail that makes the viewer say "no way"
-- Short punchy sentences (5-8 words each) — each sentence is a PUNCH
-- The tension must RISE with every sentence, never flatten
-- Max 40 words""",
+ESCALATION RULES (1-2 sentences MAX):
+- Make the crisis WORSE — escalate, don't explain
+- Add ONE unexpected detail: "no way!"
+- Ultra-short punches (3-5 words each)
+- MAX 15 WORDS STRICT (for 16s total video)
+- NO ellipsis (...). Avoid excessive periods (.). Flowing text.""",
     "outro": """
-TWIST + PUNCHLINE RULES (1-2 sentences):
-- Deliver a twist NO ONE expected — ironic reversal, cold truth, or dark humor
-- Make them want to screenshot it or send it to a friend
-- PERFECT LOOP: The last phrase must grammatically connect back to the HOOK's first words.
-  Do NOT end abruptly with a dash (--). The outro must be a COMPLETE thought that naturally flows into the hook.
-  Example: Outro ends with "...and that's the real reason why" -> loops into Hook -> viewer replays.
-- The viewer should feel the ground shift under them
-- Max 15 words"""
+TWIST RULES (1 sentence):
+- Deliver twist: ironic reversal, cold truth, dark humor
+- PERFECT LOOP: connects back to HOOK seamlessly
+- MAX 8 WORDS STRICT (for 16s total video)
+- NO ellipsis (...). NO dash endings (--). Complete thought."""
 }
 
 # ============================================================================
@@ -1398,7 +1409,8 @@ def assemble_script(
     total_words = len(words)
     
     # Estimate timing (roughly 2.5 words per second for dramatic narration)
-    total_duration = min(max(total_words / 2.5, 12), 17)  # 12-17 seconds
+    # USER REQUIREMENT: Videos must be 15-18 seconds maximum (was 12-17, but creating 30sec videos)
+    total_duration = min(max(total_words / 2.5, 15), 18)  # 15-18 seconds
     
     # Create segments with timing
     hook_words = len(hook.split())
@@ -1419,11 +1431,17 @@ def assemble_script(
     era_styles = {
         "ancient": "ancient world, classical era, marble statues",
         "medieval": "medieval era, castle, knights, oil painting style",
-        "ottoman": "Ottoman Empire, Islamic architecture, orientalist painting",
+        "ottoman_empire": "Ottoman Empire, Islamic architecture, orientalist painting",
+        "early_modern": "Renaissance era, European courts, oil painting style",
+        "19th_century": "19th century, Victorian era, vintage photograph style",
         "early_20th": "early 20th century, black and white vintage photograph",
+        "early_20th_western": "Roaring 20s, vintage cars, fedora hats, noir style",
         "ww1": "World War I, trenches, grainy black and white",
         "ww2": "World War II, military, black and white photography",
-        "modern": "mid 20th century, vintage film look"
+        "modern": "mid 20th century, vintage film look",
+        "feudal_japan": "traditional ancient Japanese setting, samurai era, wooden temples",
+        "ancient_mesoamerica": "ancient Aztec/Maya setting, stone pyramids, jungle",
+        "indigenous_culture": "traditional tribal setting, authentic indigenous clothing, nature-focused"
     }
     era_style = era_styles.get(era, era_styles["early_20th"])
     
@@ -1492,7 +1510,8 @@ PIPELINE_TOPICS = [
 
 def generate_script_pipeline(
     topic: Optional[str] = None, 
-    era: Optional[str] = None, 
+    era: Optional[str] = None,
+    search_entity: Optional[str] = None,  # NEW: specific Wikipedia page to search
     region_name: Optional[str] = None,
     mode: str = "quality",
     logger_callback: Optional[Callable] = None
@@ -1506,6 +1525,7 @@ def generate_script_pipeline(
     Args:
         topic: Optional specific topic
         era: Optional era for visual styling
+        search_entity: Optional specific Wikipedia page name (bypasses Smart Search)
         region_name: AWS region for Bedrock
         mode: 'quality' (strict) or 'fast' (relaxed thresholds)
         logger_callback: Optional callback(level, message, metadata) for status updates
@@ -1540,7 +1560,16 @@ def generate_script_pipeline(
             selected_era = selection.get("era", "early_20th")
         
         # Normalize era to standard enum
-        selected_era = normalize_era(selected_era)  # pyre-ignore[6]
+        # CRITICAL: If era is generic/default, try to detect specific culture from TOPIC
+        if selected_era == "early_20th" or not era:
+             detected_from_topic = normalize_era(selected_topic)
+             if detected_from_topic != "early_20th":
+                 print(f"🕵️ Cultural Guardrail: Detected '{detected_from_topic}' from topic '{selected_topic}'")
+                 selected_era = detected_from_topic
+             else:
+                 selected_era = normalize_era(str(selected_era))
+        else:
+             selected_era = normalize_era(str(selected_era))
         
         # Extract topic entity for diversity tracking
         topic_words = selected_topic.split()
@@ -1584,20 +1613,28 @@ def generate_script_pipeline(
     if logger_callback:
         logger_callback(level="INFO", message=f"📚 Researching '{selected_topic}'...")
     
-    wiki_context = get_wiki_summary(selected_topic)
+    wiki_context = get_wiki_summary(selected_topic, search_entity=search_entity)
     
     # Fix Era Mismatch based on text content (e.g. "1520" -> "ottoman")
     if wiki_context:
         original_era = selected_era
         selected_era = refine_era_from_text(wiki_context, selected_era)
-        if selected_era != original_era:
-             print(f"🕰️ Era Refined via Text Analysis: {original_era} -> {selected_era}")
-
-    viral_angle = ""
-    
-    if wiki_context:
-        print("✅ Wikipedia context found. Hunting for angle...")
-        angle_data = find_viral_angle(client, selected_topic, wiki_context, invoke_bedrock)
+        
+        # Second Guardrail: Check Wikipedia text for cultural keywords if we are still generic
+        # Also check early_modern because "enlightenment" (monks)        # Extract relevant pieces from wiki context if available
+        if wiki_context:
+            # DISABLED: Cultural Guardrail era override
+            # Dynamic topic generator now provides accurate era - no need to override
+            # cultural_era = normalize_era(wiki_context[:5000])
+            # if cultural_era and cultural_era != 'general':
+            #     print(f"🕵️ Cultural Guardrail (Wiki): Detected '{cultural_era}' from context")
+            #     if selected_era != cultural_era:
+            #         original_era = selected_era
+            #         selected_era = cultural_era
+            #         print(f"🕰️ Era Refined via Text Analysis: {original_era} -> {selected_era}")
+            
+            print("✅ Wikipedia context found. Hunting for angle...")
+            angle_data = find_viral_angle(client, selected_topic, wiki_context, invoke_bedrock)
         
         if angle_data and "angle" in angle_data:
             viral_angle = angle_data["angle"]
@@ -1788,6 +1825,7 @@ def generate_script_pipeline(
 def generate_script_with_fallback(
     topic: Optional[str] = None,
     era: Optional[str] = None,
+    search_entity: Optional[str] = None,  # NEW: specific Wikipedia page to search
     region_name: Optional[str] = None,
     use_pipeline: bool = True,
     prompt_memory: Optional[dict] = None,
@@ -1813,7 +1851,7 @@ def generate_script_with_fallback(
         if prompt_memory:
             global _prompt_memory
             _prompt_memory = prompt_memory
-        return generate_script_pipeline(topic=topic, era=era, region_name=region_name, logger_callback=logger_callback)
+        return generate_script_pipeline(topic=topic, era=era, search_entity=search_entity, region_name=region_name, logger_callback=logger_callback)
     except Exception as e:
         print(f"⚠️ Pipeline failed, falling back to old system: {e}")
         

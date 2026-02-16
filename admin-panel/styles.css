@@ -178,15 +178,40 @@ body {
     text-align: center;
 }
 
+/* Sidebar Footer Fix */
 .sidebar-footer {
     padding: 16px;
     border-top: 1px solid var(--glass-border);
+    margin-top: auto;
+    /* Push to bottom */
 }
 
 .api-key-section {
     display: flex;
     gap: 8px;
     margin-bottom: 12px;
+    width: 100%;
+}
+
+.api-key-section input {
+    flex: 1;
+    min-width: 0;
+    /* Prevent overflow */
+}
+
+/* Chart Line Visibility */
+.diagonal-line {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 141.4%;
+    height: 2px;
+    /* Thicker */
+    background: rgba(255, 255, 255, 0.2);
+    /* Brighter */
+    transform-origin: bottom left;
+    transform: rotate(-45deg);
+    pointer-events: none;
 }
 
 .api-key-section input {
@@ -999,10 +1024,12 @@ body {
     bottom: 0;
     left: 0;
     width: 141.4%;
-    height: 1px;
-    background: rgba(255, 255, 255, 0.08);
+    height: 2px;
+    background: rgba(255, 255, 255, 0.3);
     transform-origin: bottom left;
     transform: rotate(-45deg);
+    pointer-events: none;
+    z-index: 0;
 }
 
 /* ==========================================================================

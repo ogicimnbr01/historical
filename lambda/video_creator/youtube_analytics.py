@@ -17,9 +17,9 @@ try:
     from google.oauth2.credentials import Credentials  # pyre-ignore[21]
     from googleapiclient.discovery import build  # pyre-ignore[21]
     GOOGLE_API_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     GOOGLE_API_AVAILABLE = False
-    print("[WARNING] Google API client not available (install google-api-python-client)")
+    print(f"[WARNING] Google API client not available (install google-api-python-client). Error detail: {e}")
 
 
 # ============================================================================

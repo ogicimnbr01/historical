@@ -39,10 +39,16 @@ def search_wikipedia(query, lang='en'):
     
     return None
 
-def get_wiki_summary(topic, lang='en'):
+def get_wiki_summary(topic, search_entity=None, lang='en'):
     """
     AWS Lambda friendly Wikipedia summary fetcher.
     Tries direct page first, falls back to Smart Search if not found.
+    
+    Args:
+        topic: The topic title (for logging/display)
+        search_entity: Optional specific Wikipedia page name to search for
+                      If provided, skips Smart Search fallback
+        lang: Wikipedia language code (default 'en')
     """
     # 1. Initialize API
     wiki_wiki = wikipediaapi.Wikipedia(
@@ -52,14 +58,21 @@ def get_wiki_summary(topic, lang='en'):
     )
 
     try:
-        # 2. Try Direct Page Access
-        page = wiki_wiki.page(topic)
+        # 2. Determine which entity to search for
+        search_term = search_entity if search_entity else topic
+        
+        # 3. Try Direct Page Access
+        page = wiki_wiki.page(search_term)
 
         if page.exists():
-            print(f"✅ Direct Page Found: '{topic}'")
+            print(f"✅ Direct Page Found: '{search_term}'" + (f" (for topic '{topic}')" if search_entity else ""))
             return page.text[:2500]
         
-        # 3. Fallback: Smart Search
+        # 4. Fallback: Smart Search (only if no search_entity was provided)
+        if search_entity:
+            print(f"❌ Search Entity '{search_entity}' not found for topic '{topic}'")
+            return None
+            
         print(f"⚠️ Direct page '{topic}' not found. Attempting Smart Search...")
         best_match_title = search_wikipedia(topic, lang)
         

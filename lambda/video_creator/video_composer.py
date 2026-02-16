@@ -289,7 +289,9 @@ def compose_video(
         '-level', '3.0',           # Safe level for mobile devices
         '-pix_fmt', 'yuv420p',     # Required for Samsung/iOS/Windows
         '-preset', 'fast',
-        '-crf', '23',
+        '-b:v', '2.5M',            # Target bitrate 2.5Mbps (file size ~10-15MB)
+        '-maxrate', '3M',          # Cap bitrate to prevent spikes
+        '-bufsize', '5M',          # Buffer size for smooth streaming
         '-c:a', 'aac',
         '-b:a', '128k',
         '-movflags', '+faststart', # Web/streaming optimization

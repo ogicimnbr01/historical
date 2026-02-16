@@ -1,0 +1,24 @@
+import base64
+import sys
+import io
+
+encoded_logs = "U1RBUlQgUmVxdWVzdElkOiA2ZGZhYmM4Ni04MmE2LTQzZTktYTRjYy00MWE4NDk1ZTE4MDMgVmVyc2lvbjogJExBVEVTVArwn5qAIFN0YXJ0aW5nIFlvdVR1YmUgQW5hbHl0aWNzIEZldGNoZXIKW0lORk9dIEZvdW5kIDIgbGlua2VkIHZpZGVvcyByZWFkeSBmb3IgYW5hbHl0aWNzCltGRVRDSF0gcGVuZGluZ18yMDI2LTAyLTEzXzE2LTE4LTU5IC0+IFlvdVR1YmUgSUQ6IFNRY0NQdWhURkJZICgyNy43aCBvbGQpCltSRVRSWV0gcGVuZGluZ18yMDI2LTAyLTEzXzE2LTE4LTU5IC0gbm8gZGF0YSB5ZXQgKDI3LjdoIG9sZCwgcmV0cnkgIzIpCltGRVRDSF0gcGVuZGluZ18yMjAyNi0wMi0xMl8xNi0xNy0zNS0yNiAtPiBZb3VUdWJlIElEOiBGZVZhSmdTcWVlTSAoNTAuNGggb2xkKQpbbk90cmlfdG9fc2VuZCBsb3ctcGVyZm9ybWFuY2VfYWxlcnQgZm9yIHZpZGVvIEZlVmFKZ1NxZWVN"
+
+# Re-pasting the exact string from previous output
+log_data = "U1RBUlQgUmVxdWVzdElkOiA2ZGZhYmM4Ni04MmE2LTQzZTktYTRjYy00MWE4NDk1ZTE4MDMgVmVyc2lvbjogJExBVEVTVArwn5qAIFN0YXJ0aW5nIFlvdVR1YmUgQW5hbHl0aWNzIEZldGNoZXIKW0lORk9dIEZvdW5kIDIgbGlua2VkIHZpZGVvcyByZWFkeSBmb3IgYW5hbHl0aWNzCltGRVRDSF0gcGVuZGluZ18yMDI2LTAyLTEzXzE2LTE4LTU5IC0+IFlvdVR1YmUgSUQ6IFNRY0NQdWhURkJZICgyNy43aCBvbGQpCltSRVRSWV0gcGVuZGluZ18yMDI2LTAyLTEzXzE2LTE4LTU5IC0gbm8gZGF0YSB5ZXQgKDI3LjdoIG9sZCwgcmV0cnkgIzIpCltGRVRDSF0gcGVuZGluZ18yMDI2LTAyLTEyXzE3LTM1LTI2IC0+IFlvdVR1YmUgSUQ6IEZlVmFKZ1NxZWVNICg1MC40aCBvbGQpCltSRVRSWV0gcGVuZGluZ18yMDI2LTAyLTEyXzE3LTM1LTI2IC0gbm8gZGF0YSB5ZXQgKDUwLjRoIG9sZCwgcmV0cnkgIzMpCltTVU1NQVJZXSBzdWNjZXNzPTAsIGZhaWxlZD0wLCBza2lwcGVkPTAsIHJldHJ5X2xhdGVyPTIK8J+TiiBSZXN1bHRzOiB7InJlc3VsdHMiOiB7InN1Y2Nlc3MiOiAwLCAiZmFpbGVkIjogMCwgInNraXBwZWQiOiAwLCAicmV0cnlfbGF0ZXIiOiAyfX0KRU5EIFJlcXVlc3RJZDogNmRmYWJjODYtODJhNi00M2U5LWE0Y2MtNDFhODQ5NWUxODAzClJFUE9SVCBSZXF1ZXN0SWQ6IDZkZmFiYzg2LTgyYTYtNDNlOS1hNGNjLTQxYTg0OTVlMTgwMwlEdXJhdGlvbjogMTM4NS45OSBtcwlCaWxsZWQgRHVyYXRpb246IDI0NDcgbXMJTWVtb3J5IFNpemU6IDUxMiBNQglNYXggTWVtb3J5IFVzZWQ6IDEyNCBNQglJbml0IER1cmF0aW9uOiAxMDYwLjc3IG1zCQo="
+
+decoded = base64.b64decode(log_data).decode('utf-8')
+
+# Windows encoding fix - compatible with older Python versions
+if sys.platform == "win32":
+    try:
+        # Try reconfigure for Python 3.7+
+        if hasattr(sys.stdout, 'reconfigure'):
+            sys.stdout.reconfigure(encoding='utf-8')
+        else:
+            # Fallback for older Python versions
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    except (AttributeError, ValueError):
+        pass  # If all else fails, proceed without reconfiguring
+
+print(decoded)

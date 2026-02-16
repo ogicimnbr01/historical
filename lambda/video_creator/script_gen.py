@@ -8,6 +8,7 @@ import json
 import re
 import random
 import boto3  # pyre-ignore[21]: third-party module without configured stubs
+import os
 from typing import Optional
 
 # Similarity Dampener for content variety
@@ -74,8 +75,9 @@ Your videos reveal fascinating, lesser-known facts about history that make viewe
 3. ALWAYS start with a CRISIS, THREAT, PARADOX, or MYSTERY
 4. ALWAYS escalate the stakes before revealing the answer
 5. NEVER be longer than 15 seconds when read aloud
-6. MAXIMUM 7-8 WORDS PER SENTENCE - Punchy, short, impactful
-7. Hook must be a SCROLL STOPPER - not documentary intro
+6. MAXIMUM 450 CHARACTERS (Strict Limit) - ~40-50 words
+7. MAXIMUM 7-8 WORDS PER SENTENCE - Punchy, short, impactful
+8. Hook must be a SCROLL STOPPER - not documentary intro
 
 📝 EXACT SCRIPT STRUCTURE (Total 15 seconds, 4 segments):
 
@@ -393,11 +395,18 @@ Make it FASCINATING. Make viewers stop scrolling."""
     print(f"📜 Generated history script: {script['title']}")
     print(f"   Era: {script['era']}, Mood: {script['mood']}")
     
-    # Save to similarity history for future dampening
-    try:
-        save_video_metadata(script, region_name=region)
-    except Exception as e:
-        print(f"⚠️ Failed to save similarity history: {e}")
+    # ========== LENGTH VALIDATION ==========
+    # Check if script exceeds limits and shorten if necessary
+    char_count = len(script.get('voiceover_text', ''))
+    
+    if char_count > 450:
+        print(f"⚠️ Generated script too long ({char_count} chars > 450 limit). Triggering auto-shortener...")
+        script = shorten_script(script, region)
+    
+    # Double check after shortening
+    final_char_count = len(script.get('voiceover_text', ''))
+    if final_char_count > 480: # Hard limit tolerance
+         print(f"⚠️ Script still too long ({final_char_count}). Forcing truncation warning.")
     
     return script
 
@@ -601,10 +610,73 @@ def generate_absurd_script(region_name: Optional[str] = None) -> dict:
     return generate_history_script(region_name=region_name)
 
 
-if __name__ == "__main__":
-    # Test locally (requires AWS credentials)
-    print("Testing History Script Generator...")
+def shorten_script(script: dict, region_name: str) -> dict:
+    """
+    Shorten the script if it's too long.
+    Uses LLM to rewrite it with a strict character limit.
+    """
+    import json
+    import re
     
-    # Test with specific topic
-    script = generate_history_script("Atatürk's favorite foods")
-    print(json.dumps(script, indent=2, ensure_ascii=False))
+    print(f"✂️ Script too long! ({len(script['voiceover_text'])} chars). Shortening...")
+    
+    bedrock = boto3.client(
+        service_name='bedrock-runtime',
+        region_name=region_name
+    )
+    
+    model_id = os.environ.get('BEDROCK_MODEL_ID', 'us.anthropic.claude-sonnet-4-5-20250929-v1:0')
+    
+    # Construct the shortening prompt
+    shortening_prompt = f"""
+    The following YouTube Shorts script is too long.
+    SHORTEN it to under 400 characters max.
+    
+    ORIGINAL SCRIPT:
+    {json.dumps(script, indent=2)}
+    
+    RULES:
+    1. Keep the same meaning and punchline.
+    2. Make it punchier and faster.
+    3. Remove any fluff or introductory phrases.
+    4. Do NOT add "Here is the shortened version" - just return the JSON.
+    5. STRICTLY output valid JSON matching the original structure.
+    """
+    
+    request_body = {
+        "anthropic_version": "bedrock-2023-05-31",
+        "max_tokens": 800,
+        "temperature": 0.5,
+        "messages": [
+            {
+                "role": "user",
+                "content": shortening_prompt
+            }
+        ]
+    }
+    
+    try:
+        response = bedrock.invoke_model(
+            modelId=model_id,
+            body=json.dumps(request_body),
+            contentType="application/json",
+            accept="application/json"
+        )
+        
+        response_body = json.loads(response['body'].read())
+        content = response_body['content'][0]['text']
+        
+        # Extract JSON
+        json_match = re.search(r'\{[\s\S]*\}', content)
+        if json_match:
+            new_script = json.loads(json_match.group())
+            print(f"✅ Script shortened to {len(new_script.get('voiceover_text', ''))} chars")
+            return new_script
+        else:
+            print("⚠️ Could not parse shortened JSON, keeping original")
+            return script
+            
+    except Exception as e:
+        print(f"⚠️ Shortening failed: {e}")
+        return script
+

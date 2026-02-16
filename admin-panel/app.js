@@ -1,6 +1,6 @@
 /**
  * Historical Shorts — Command Center
- * Premium Admin Panel JavaScript
+ * Premium Admin Panel JavaScript (Turkish Localization)
  */
 
 // ============================================================================
@@ -32,7 +32,7 @@ function setApiKey() {
     CONFIG.API_KEY = input.value;
     localStorage.setItem('admin_api_key', input.value);
     updateConnectionStatus(true);
-    showToast('🔑 API Key saved!', 'success');
+    showToast('🔑 API Anahtarı kaydedildi!', 'success');
     loadDashboard();
 }
 
@@ -49,9 +49,9 @@ function loadStoredApiKey() {
 function updateConnectionStatus(connected) {
     const el = document.getElementById('connectionStatus');
     if (connected) {
-        el.innerHTML = '<span class="status-dot online"></span><span class="status-text">Connected</span>';
+        el.innerHTML = '<span class="status-dot online"></span><span class="status-text">Bağlandı</span>';
     } else {
-        el.innerHTML = '<span class="status-dot offline"></span><span class="status-text">Disconnected</span>';
+        el.innerHTML = '<span class="status-dot offline"></span><span class="status-text">Bağlantı Yok</span>';
     }
 }
 
@@ -133,7 +133,7 @@ async function loadDashboard() {
         loadRecentVideos();
     } catch (error) {
         console.error('Dashboard load failed:', error);
-        showToast('Dashboard: ' + error.message, 'error');
+        showToast('Panel: ' + error.message, 'error');
         updateConnectionStatus(false);
     }
 }
@@ -164,7 +164,7 @@ async function loadRecentVideos() {
         const container = document.getElementById('recentVideos');
 
         if (recentVids.length === 0) {
-            container.innerHTML = '<div class="empty-state">No videos yet</div>';
+            container.innerHTML = '<div class="empty-state">Henüz video yok</div>';
             return;
         }
 
@@ -188,7 +188,7 @@ async function loadRecentVideos() {
 // ============================================================================
 async function loadVideos() {
     if (!CONFIG.API_KEY) {
-        showToast('Set API key first', 'error');
+        showToast('Önce API anahtarını girin', 'error');
         return;
     }
 
@@ -212,7 +212,7 @@ async function loadVideos() {
         renderVideosTable();
     } catch (error) {
         console.error('Failed to load videos:', error);
-        showToast('Videos: ' + error.message, 'error');
+        showToast('Videolar: ' + error.message, 'error');
     }
 }
 
@@ -251,7 +251,7 @@ function renderVideosTable() {
             <td class="cell-mono">${deltaHTML}</td>
             <td><span class="badge ${video.status}">${video.status || 'pending'}</span></td>
             <td>
-                <button class="action-btn" onclick="viewVideo('${video.video_id}')">View</button>
+                <button class="action-btn" onclick="viewVideo('${video.video_id}')">İncele</button>
                 ${video.status === 'test'
                 ? `<button class="action-btn undo" onclick="unmarkTest('${video.video_id}')">↩</button>`
                 : `<button class="action-btn test" onclick="markAsTest('${video.video_id}')">TEST</button>`
@@ -282,7 +282,7 @@ async function loadAnalytics() {
         renderScatterChart();
     } catch (error) {
         console.error('Analytics failed:', error);
-        showToast('Analytics: ' + error.message, 'error');
+        showToast('Analitik: ' + error.message, 'error');
     }
 }
 
@@ -293,7 +293,7 @@ function renderDeltaChart() {
     );
 
     if (instrumented.length < 3) {
-        container.innerHTML = '<div class="empty-state">Need 3+ instrumented videos for delta analysis</div>';
+        container.innerHTML = '<div class="empty-state">Delta analizi için 3+ video gerekli</div>';
         document.getElementById('avgDelta').textContent = '—';
         document.getElementById('goodhartStatus').textContent = '—';
         return;
@@ -325,18 +325,18 @@ function renderDeltaChart() {
             statusEl.textContent = corr.toFixed(3);
             if (corr > 0.3) {
                 statusEl.style.color = 'var(--green)';
-                descEl.textContent = '✅ Score delta correlates with retention';
+                descEl.textContent = '✅ Puan artışı izlenme ile ilişkili';
             } else if (corr < 0.1) {
                 statusEl.style.color = 'var(--red)';
-                descEl.textContent = '❌ Self-optimization risk detected';
+                descEl.textContent = '❌ Self-optimizasyon riski tespit edildi';
             } else {
                 statusEl.style.color = 'var(--yellow)';
-                descEl.textContent = '⚠️ Weak signal — more data needed';
+                descEl.textContent = '⚠️ Zayıf sinyal - daha fazla veri gerekli';
             }
         }
     } else {
         document.getElementById('goodhartStatus').textContent = '⏳';
-        document.getElementById('goodhartDesc').textContent = `${withRetention.length}/5 samples needed`;
+        document.getElementById('goodhartDesc').textContent = `${withRetention.length}/5 örnek gerekli`;
     }
 
     // Bar chart of delta distribution
@@ -368,7 +368,7 @@ function renderCategoryChart() {
     const withCategory = allVideos.filter(v => v.category && v.actual_retention);
 
     if (withCategory.length < 2) {
-        container.innerHTML = '<div class="empty-state">Need complete videos with categories</div>';
+        container.innerHTML = '<div class="empty-state">Kategorili video gerekli</div>';
         return;
     }
 
@@ -407,7 +407,7 @@ function renderRefineChart() {
     const withRefine = allVideos.filter(v => v.refine_total != null && v.actual_retention);
 
     if (withRefine.length < 3) {
-        container.innerHTML = '<div class="empty-state">Need more complete videos</div>';
+        container.innerHTML = '<div class="empty-state">Daha fazla tamamlanmış video gerekli</div>';
         return;
     }
 
@@ -445,7 +445,7 @@ function renderModeChart() {
     const withMode = allVideos.filter(v => v.mode && v.actual_retention);
 
     if (withMode.length < 2) {
-        container.innerHTML = '<div class="empty-state">Need complete videos with mode data</div>';
+        container.innerHTML = '<div class="empty-state">Mod verisi olan video gerekli</div>';
         return;
     }
 
@@ -482,7 +482,7 @@ function renderScatterChart() {
     );
 
     if (complete.length < 3) {
-        container.innerHTML = '<div class="empty-state">Need 3+ complete eligible videos for scatter plot</div>';
+        container.innerHTML = '<div class="empty-state">Saçılım grafiği için 3+ uygun video gerekli</div>';
         return;
     }
 
@@ -506,8 +506,8 @@ function renderScatterChart() {
         <div class="dot-plot">
             <div class="diagonal-line"></div>
             ${dotsHtml}
-            <span class="axis-label x-axis">Predicted →</span>
-            <span class="axis-label y-axis">Actual →</span>
+            <span class="axis-label x-axis">Tahmin →</span>
+            <span class="axis-label y-axis">Gerçek →</span>
         </div>
     `;
 }
@@ -559,7 +559,7 @@ async function loadGenerateStats() {
 
 async function generateVideo() {
     if (!CONFIG.API_KEY) {
-        showToast('Set API key first', 'error');
+        showToast('Önce API anahtarını girin', 'error');
         return;
     }
 
@@ -577,25 +577,25 @@ async function generateVideo() {
     if (topicOverride) payload.topic_override = topicOverride;
 
     try {
-        showToast('🚀 Starting video generation...', 'info');
+        showToast('🚀 Video üretimi başlatılıyor...', 'info');
         const response = await apiCall('/generate', 'POST', payload);
 
         if (response.job_id) {
-            showToast(`✅ Generation started! Job: ${response.job_id}`, 'success');
+            showToast(`✅ Üretim başladı! İşlem: ${response.job_id}`, 'success');
             navigateTo('jobs');
         }
     } catch (error) {
-        showToast('Generation failed: ' + error.message, 'error');
+        showToast('Üretim hatası: ' + error.message, 'error');
     }
 }
 
 async function generateTestVideo() {
     if (!CONFIG.API_KEY) {
-        showToast('Set API key first', 'error');
+        showToast('Önce API anahtarını girin', 'error');
         return;
     }
 
-    if (!confirm('Generate a TEST video? It will be ineligible for calibration.')) return;
+    if (!confirm('TEST videosu üretilsin mi? Kalibrasyona dahil edilmeyecek.')) return;
 
     const mode = document.getElementById('genMode').value;
     const titleVariant = document.getElementById('genTitleVariant').value;
@@ -611,15 +611,15 @@ async function generateTestVideo() {
     if (topicOverride) payload.topic_override = topicOverride;
 
     try {
-        showToast('🧪 Starting TEST generation...', 'info');
+        showToast('🧪 TEST üretimi başlatılıyor...', 'info');
         const response = await apiCall('/generate', 'POST', payload);
 
         if (response.job_id) {
-            showToast(`✅ TEST generation started! Job: ${response.job_id}`, 'success');
+            showToast(`✅ TEST üretimi başladı! İşlem: ${response.job_id}`, 'success');
             navigateTo('jobs');
         }
     } catch (error) {
-        showToast('Test generation failed: ' + error.message, 'error');
+        showToast('Test üretim hatası: ' + error.message, 'error');
     }
 }
 
@@ -628,12 +628,12 @@ async function generateTestVideo() {
 // ============================================================================
 async function loadJobs() {
     if (!CONFIG.API_KEY) {
-        showToast('Set API key first', 'error');
+        showToast('Önce API anahtarını girin', 'error');
         return;
     }
 
     const timeline = document.getElementById('jobsTimeline');
-    timeline.innerHTML = '<div class="empty-state">Loading jobs...</div>';
+    timeline.innerHTML = '<div class="empty-state">İşlemler yükleniyor...</div>';
 
     try {
         const params = new URLSearchParams();
@@ -645,7 +645,7 @@ async function loadJobs() {
         const jobs = data.jobs || [];
 
         if (jobs.length === 0) {
-            timeline.innerHTML = '<div class="empty-state">No jobs in the last 24 hours</div>';
+            timeline.innerHTML = '<div class="empty-state">Son 24 saatte işlem yok</div>';
             return;
         }
 
@@ -655,35 +655,35 @@ async function loadJobs() {
                     <span class="job-id">${job.job_id}</span>
                     <div class="header-right">
                         <span class="job-status ${job.status}">${job.status}</span>
-                        <button class="btn-icon" onclick="deleteJob('${job.job_id}')" title="Delete">✕</button>
+                        <button class="btn-icon" onclick="deleteJob('${job.job_id}')" title="Sil">✕</button>
                     </div>
                 </div>
                 <div class="job-details">
                     <div>📅 ${formatDate(job.requested_at_utc)}</div>
-                    ${job.params ? `<div>⚙️ Mode: ${job.params.mode || 'auto'} | Title: ${job.params.title_variant || 'auto'}</div>` : ''}
+                    ${job.params ? `<div>⚙️ Mod: ${job.params.mode || 'auto'} | Başlık: ${job.params.title_variant || 'auto'}</div>` : ''}
                     ${job.result_video_id ? `<div>🎬 Video: ${job.result_video_id}</div>` : ''}
                     ${job.error_message ? `<div>❌ ${job.error_message}</div>` : ''}
                 </div>
                 <div class="job-actions">
-                    <button class="action-btn" onclick="viewJobLogs('${job.job_id}')">📋 Logs</button>
+                    <button class="action-btn" onclick="viewJobLogs('${job.job_id}')">📋 Loglar</button>
                     ${job.result_video_id ? `<button class="action-btn" onclick="viewVideo('${job.result_video_id}')">🎬 Video</button>` : ''}
                 </div>
             </div>
         `).join('');
     } catch (error) {
-        timeline.innerHTML = `<div class="empty-state">Error: ${error.message}</div>`;
-        showToast('Jobs: ' + error.message, 'error');
+        timeline.innerHTML = `<div class="empty-state">Hata: ${error.message}</div>`;
+        showToast('İşlemler: ' + error.message, 'error');
     }
 }
 
 async function deleteJob(jobId) {
-    if (!confirm(`Delete job ${jobId}?`)) return;
+    if (!confirm(`${jobId} işlemini sil?`)) return;
     try {
         await apiCall(`/jobs/${encodeURIComponent(jobId)}`, 'DELETE');
-        showToast('Job deleted', 'success');
+        showToast('İşlem silindi', 'success');
         loadJobs();
     } catch (error) {
-        showToast('Delete failed: ' + error.message, 'error');
+        showToast('Silme başarısız: ' + error.message, 'error');
     }
 }
 
@@ -712,11 +712,11 @@ async function viewVideo(videoId) {
                     <span class="detail-val" style="font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">${video.video_id}</span>
                 </div>
                 <div class="detail-item">
-                    <label>Publish Time</label>
+                    <label>Yayın Zamanı</label>
                     <span class="detail-val">${formatDate(video.publish_time_utc)}</span>
                 </div>
                 <div class="detail-item">
-                    <label>Mode</label>
+                    <label>Mod</label>
                     <span class="badge ${video.mode}">${video.mode || '—'}</span>
                 </div>
                 <div class="detail-item">
@@ -724,129 +724,129 @@ async function viewVideo(videoId) {
                     <span class="badge ${video.pipeline_executed === 'fallback' ? 'fallback' : 'v24'}">${video.pipeline_executed || 'v2.4'}</span>
                 </div>
 
-                <div class="detail-section-title">📊 Performance</div>
+                <div class="detail-section-title">📊 Performans</div>
 
                 <div class="detail-item">
-                    <label>Predicted Retention</label>
+                    <label>Tahmini İzlenme</label>
                     <span class="detail-val cell-mono">${video.predicted_retention ? Math.round(video.predicted_retention) + '%' : '—'}</span>
                 </div>
                 <div class="detail-item">
-                    <label>Actual Retention</label>
-                    <span class="detail-val cell-mono">${video.actual_retention ? Math.round(video.actual_retention) + '%' : 'Pending'}</span>
+                    <label>Gerçek İzlenme</label>
+                    <span class="detail-val cell-mono">${video.actual_retention ? Math.round(video.actual_retention) + '%' : 'Bekliyor'}</span>
                 </div>
                 <div class="detail-item">
-                    <label>Hook Score (Final)</label>
+                    <label>Kanca Puanı (Final)</label>
                     <span class="detail-val cell-mono">${video.hook_score || video.final_hook_score || '—'}</span>
                 </div>
                 <div class="detail-item">
-                    <label>Visual Relevance</label>
+                    <label>Görsel Uyumluluk</label>
                     <span class="detail-val cell-mono">${video.visual_relevance || '—'}</span>
                 </div>
 
                 <div class="detail-section-title">🔬 Refine Delta</div>
 
                 <div class="detail-item">
-                    <label>First Hook Score</label>
+                    <label>İlk Kanca Puanı</label>
                     <span class="detail-val cell-mono">${!isNaN(firstHook) ? firstHook.toFixed(2) : '—'}</span>
                 </div>
                 <div class="detail-item">
-                    <label>Final Hook Score</label>
+                    <label>Final Kanca Puanı</label>
                     <span class="detail-val cell-mono">${!isNaN(finalHook) ? finalHook.toFixed(2) : '—'}</span>
                 </div>
                 <div class="detail-item">
-                    <label>Hook Score Δ</label>
+                    <label>Kanca Puanı Δ</label>
                     <span class="detail-val cell-mono">${deltaDisplay}</span>
                 </div>
                 <div class="detail-item">
-                    <label>Total Refines</label>
+                    <label>Toplam Refine</label>
                     <span class="detail-val cell-mono">${video.refine_total ?? '—'}</span>
                 </div>
                 <div class="detail-item">
-                    <label>Hook Refines</label>
+                    <label>Kanca Refine</label>
                     <span class="detail-val cell-mono">${video.hook_refines ?? '—'}</span>
                 </div>
 
                 <div class="detail-section-title">📋 Metadata</div>
 
                 <div class="detail-item">
-                    <label>Category</label>
+                    <label>Kategori</label>
                     <span class="detail-val">${video.category || '—'}</span>
                 </div>
                 <div class="detail-item">
-                    <label>Era</label>
+                    <label>Dönem (Era)</label>
                     <span class="detail-val">${video.era || '—'}</span>
                 </div>
                 <div class="detail-item">
-                    <label>Topic Entity</label>
+                    <label>Konu (Entity)</label>
                     <span class="detail-val">${video.topic_entity || '—'}</span>
                 </div>
                 <div class="detail-item">
-                    <label>Title Used</label>
+                    <label>Kullanılan Başlık</label>
                     <span class="detail-val">${video.title_used || '—'}</span>
                 </div>
                 <div class="detail-item">
-                    <label>Title Variant</label>
+                    <label>Başlık Varyasyonu</label>
                     <span class="detail-val">${video.title_variant_type || '—'}</span>
                 </div>
                 <div class="detail-item">
-                    <label>Virality Score</label>
+                    <label>Viralite Skoru</label>
                     <span class="detail-val cell-mono">${video.virality_score || '—'}</span>
                 </div>
 
-                <div class="detail-section-title">⚙️ Control</div>
+                <div class="detail-section-title">⚙️ Kontrol</div>
 
                 <div class="detail-item">
-                    <label>Status</label>
+                    <label>Durum</label>
                     <select id="detailStatus" class="detail-select">
-                        <option value="pending" ${video.status === 'pending' ? 'selected' : ''}>Pending</option>
-                        <option value="linked" ${video.status === 'linked' ? 'selected' : ''}>Linked</option>
-                        <option value="complete" ${video.status === 'complete' ? 'selected' : ''}>Complete</option>
-                        <option value="failed" ${video.status === 'failed' ? 'selected' : ''}>Failed</option>
+                        <option value="pending" ${video.status === 'pending' ? 'selected' : ''}>Bekleyen (Pending)</option>
+                        <option value="linked" ${video.status === 'linked' ? 'selected' : ''}>Bağlı (Linked)</option>
+                        <option value="complete" ${video.status === 'complete' ? 'selected' : ''}>Tamam (Complete)</option>
+                        <option value="failed" ${video.status === 'failed' ? 'selected' : ''}>Hatalı (Failed)</option>
                         <option value="test" ${video.status === 'test' ? 'selected' : ''}>Test</option>
                     </select>
                 </div>
                 <div class="detail-item">
-                    <label>Invalid Reason</label>
+                    <label>Geçersizlik Nedeni</label>
                     <select id="detailReason" class="detail-select">
-                        <option value="">None</option>
-                        <option value="test_run" ${video.invalid_reason === 'test_run' ? 'selected' : ''}>Test Run</option>
+                        <option value="">Yok</option>
+                        <option value="test_run" ${video.invalid_reason === 'test_run' ? 'selected' : ''}>Test Çalışması</option>
                         <option value="fallback" ${video.invalid_reason === 'fallback' ? 'selected' : ''}>Fallback</option>
-                        <option value="topic_mismatch" ${video.invalid_reason === 'topic_mismatch' ? 'selected' : ''}>Topic Mismatch</option>
-                        <option value="upload_failed" ${video.invalid_reason === 'upload_failed' ? 'selected' : ''}>Upload Failed</option>
+                        <option value="topic_mismatch" ${video.invalid_reason === 'topic_mismatch' ? 'selected' : ''}>Konu Uyuşmazlığı</option>
+                        <option value="upload_failed" ${video.invalid_reason === 'upload_failed' ? 'selected' : ''}>Yükleme Hatası</option>
                     </select>
                 </div>
             </div>
 
             <!-- YouTube Link Section -->
             <div class="youtube-section">
-                <h3>🔗 YouTube Link</h3>
+                <h3>🔗 YouTube Bağlantısı</h3>
                 ${video.youtube_video_id ? `
                     <div class="linked-status">
-                        <span class="linked-badge">✅ Linked</span>
+                        <span class="linked-badge">✅ Bağlı</span>
                         <a href="${video.youtube_url || 'https://youtube.com/shorts/' + video.youtube_video_id}" target="_blank" class="youtube-link">
                             ${video.youtube_video_id}
                         </a>
-                        <button class="btn-unlink" onclick="unlinkYouTube('${video.video_id}')">Unlink</button>
+                        <button class="btn-unlink" onclick="unlinkYouTube('${video.video_id}')">Bağı Kaldır</button>
                     </div>
                 ` : `
                     <div class="link-form">
-                        <input type="text" id="youtubeUrlInput" placeholder="YouTube URL or Video ID" class="youtube-input" />
-                        <button class="btn-link" onclick="linkYouTube('${video.video_id}')">Link</button>
+                        <input type="text" id="youtubeUrlInput" placeholder="YouTube URL veya Video ID" class="youtube-input" />
+                        <button class="btn-link" onclick="linkYouTube('${video.video_id}')">Bağla</button>
                     </div>
-                    <p class="link-hint">Supports: youtube.com/shorts/..., youtu.be/..., or video ID</p>
+                    <p class="link-hint">Desteklenen: youtube.com/shorts/..., youtu.be/..., veya video ID</p>
                 `}
             </div>
 
             <div class="detail-actions">
-                <button class="btn-delete" onclick="deleteVideo('${video.video_id}')">🗑️ Delete</button>
-                <button class="btn-test" onclick="markAsTestFromModal('${video.video_id}')">Mark TEST</button>
-                <button class="btn-save" onclick="saveVideoChanges('${video.video_id}')">Save Changes</button>
+                <button class="btn-delete" onclick="deleteVideo('${video.video_id}')">🗑️ Sil</button>
+                <button class="btn-test" onclick="markAsTestFromModal('${video.video_id}')">TEST İşaretle</button>
+                <button class="btn-save" onclick="saveVideoChanges('${video.video_id}')">Değişiklikleri Kaydet</button>
             </div>
         `;
 
         document.getElementById('videoModal').classList.remove('hidden');
     } catch (error) {
-        showToast('Failed to load video: ' + error.message, 'error');
+        showToast('Video yüklenemedi: ' + error.message, 'error');
     }
 }
 
@@ -878,10 +878,10 @@ async function saveVideoChanges(videoId) {
 
         await apiCall(`/videos/${encodeURIComponent(videoId)}`, 'PATCH', updates);
         closeModal();
-        showToast('✅ Changes saved', 'success');
+        showToast('✅ Değişiklikler kaydedildi', 'success');
         loadVideos();
     } catch (error) {
-        showToast('Save failed: ' + error.message, 'error');
+        showToast('Kaydetme başarısız: ' + error.message, 'error');
     }
 }
 
@@ -903,14 +903,14 @@ function toggleSelectAll() {
 }
 
 function updateSelectedCount() {
-    document.getElementById('selectedCount').textContent = `${selectedVideos.size} selected`;
+    document.getElementById('selectedCount').textContent = `${selectedVideos.size} seçildi`;
 }
 
 async function toggleEligible(videoId, isEligible) {
     try {
         const video = videos.find(v => v.video_id === videoId);
         if (isEligible && video && video.pipeline_executed === 'fallback') {
-            if (!confirm('⚠️ Fallback video — setting eligible may pollute calibration. Continue?')) {
+            if (!confirm('⚠️ Fallback sürümü — uygun işaretlemek kalibrasyonu bozabilir. Devam?')) {
                 loadVideos();
                 return;
             }
@@ -923,13 +923,13 @@ async function toggleEligible(videoId, isEligible) {
         const idx = videos.findIndex(v => v.video_id === videoId);
         if (idx >= 0) videos[idx].calibration_eligible = isEligible;
     } catch (error) {
-        showToast('Update failed: ' + error.message, 'error');
+        showToast('Güncelleme başarısız: ' + error.message, 'error');
         loadVideos();
     }
 }
 
 async function markAsTest(videoId) {
-    if (!confirm(`Mark ${videoId} as TEST?`)) return;
+    if (!confirm(`${videoId} videosunu TEST olarak işaretle?`)) return;
 
     try {
         await apiCall(`/videos/${encodeURIComponent(videoId)}`, 'PATCH', {
@@ -939,17 +939,17 @@ async function markAsTest(videoId) {
         });
         loadVideos();
     } catch (error) {
-        showToast('Failed: ' + error.message, 'error');
+        showToast('Başarısız: ' + error.message, 'error');
     }
 }
 
 async function markSelectedAsTest() {
     if (selectedVideos.size === 0) {
-        showToast('No videos selected', 'error');
+        showToast('Video seçilmedi', 'error');
         return;
     }
 
-    if (!confirm(`Mark ${selectedVideos.size} videos as TEST?`)) return;
+    if (!confirm(`${selectedVideos.size} videoyu TEST olarak işaretle?`)) return;
 
     try {
         await apiCall('/videos/bulk', 'POST', {
@@ -959,12 +959,12 @@ async function markSelectedAsTest() {
         selectedVideos.clear();
         loadVideos();
     } catch (error) {
-        showToast('Bulk update failed: ' + error.message, 'error');
+        showToast('Toplu güncelleme başarısız: ' + error.message, 'error');
     }
 }
 
 async function unmarkTest(videoId) {
-    if (!confirm(`Restore ${videoId} from TEST?`)) return;
+    if (!confirm(`${videoId} test durumundan çıkarılsın mı?`)) return;
 
     try {
         const video = videos.find(v => v.video_id === videoId);
@@ -977,7 +977,7 @@ async function unmarkTest(videoId) {
         });
         loadVideos();
     } catch (error) {
-        showToast('Unmark failed: ' + error.message, 'error');
+        showToast('Geri alma başarısız: ' + error.message, 'error');
     }
 }
 
@@ -986,7 +986,7 @@ async function linkYouTube(videoId) {
     const youtubeUrl = input?.value?.trim();
 
     if (!youtubeUrl) {
-        showToast('Enter a YouTube URL or Video ID', 'error');
+        showToast('YouTube URL veya Video ID girin', 'error');
         return;
     }
 
@@ -994,16 +994,16 @@ async function linkYouTube(videoId) {
         await apiCall(`/videos/${encodeURIComponent(videoId)}`, 'PATCH', {
             youtube_url: youtubeUrl
         });
-        showToast('✅ Video linked!', 'success');
+        showToast('✅ Video bağlandı!', 'success');
         closeModal();
         loadVideos();
     } catch (error) {
-        showToast('Link failed: ' + error.message, 'error');
+        showToast('Bağlama hatası: ' + error.message, 'error');
     }
 }
 
 async function unlinkYouTube(videoId) {
-    if (!confirm('Unlink this YouTube video?')) return;
+    if (!confirm('YouTube bağlantısını kaldır?')) return;
 
     try {
         await apiCall(`/videos/${encodeURIComponent(videoId)}`, 'PATCH', {
@@ -1014,21 +1014,21 @@ async function unlinkYouTube(videoId) {
         closeModal();
         loadVideos();
     } catch (error) {
-        showToast('Unlink failed: ' + error.message, 'error');
+        showToast('Bağlantı kaldırma hatası: ' + error.message, 'error');
     }
 }
 
 async function deleteVideo(videoId) {
-    if (!confirm(`⚠️ Delete video ${videoId}?\n\nThis cannot be undone!`)) return;
+    if (!confirm(`⚠️ ${videoId} videosunu sil?\n\nBu işlem geri alınamaz!`)) return;
 
     try {
         await apiCall(`/videos/${encodeURIComponent(videoId)}`, 'DELETE');
-        showToast('Video deleted', 'success');
+        showToast('Video silindi', 'success');
         closeModal();
         loadVideos();
         loadDashboard();
     } catch (error) {
-        showToast('Delete failed: ' + error.message, 'error');
+        showToast('Silme hatası: ' + error.message, 'error');
     }
 }
 
@@ -1042,8 +1042,8 @@ async function viewJobLogs(jobId) {
     currentLogsJobId = jobId;
     currentLogsData = [];
 
-    document.getElementById('logsModalTitle').textContent = `📋 Logs: ${jobId}`;
-    document.getElementById('logsContainer').innerHTML = '<div class="empty-state">Loading logs...</div>';
+    document.getElementById('logsModalTitle').textContent = `📋 Loglar: ${jobId}`;
+    document.getElementById('logsContainer').innerHTML = '<div class="empty-state">Loglar yükleniyor...</div>';
     document.getElementById('logsModal').classList.remove('hidden');
 
     try {
@@ -1051,14 +1051,14 @@ async function viewJobLogs(jobId) {
         currentLogsData = data.logs || [];
         renderLogs(currentLogsData);
     } catch (error) {
-        document.getElementById('logsContainer').innerHTML = `<div class="empty-state">Error: ${error.message}</div>`;
+        document.getElementById('logsContainer').innerHTML = `<div class="empty-state">Hata: ${error.message}</div>`;
     }
 }
 
 function renderLogs(logs) {
     const container = document.getElementById('logsContainer');
     if (logs.length === 0) {
-        container.innerHTML = '<div class="empty-state">No logs found</div>';
+        container.innerHTML = '<div class="empty-state">Log bulunamadı</div>';
         return;
     }
 

@@ -18,6 +18,7 @@ from typing import Optional, List, Dict, Any, cast
 from script_gen import generate_history_script, SAMPLE_TOPICS  # pyre-ignore[21]
 from script_pipeline import generate_script_with_fallback  # pyre-ignore[21]
 from topic_selector import select_next_topic  # pyre-ignore[21]
+from dynamic_topic_generator import generate_dynamic_topic, get_recent_wiki_entities  # pyre-ignore[21]
 from difflib import SequenceMatcher
 
 METRICS_TABLE_NAME = os.environ.get('METRICS_TABLE_NAME', 'shorts_video_metrics')
@@ -517,32 +518,58 @@ def lambda_handler(event, context):
                 # User provided topic - use it (no retry on topic, just script)
                 selected_topic = topic_input
                 selected_era = era_input
+                search_entity = event.get('search_entity', None) if event else None  # User can optionally provide search_entity
                 selected_category = event.get('category', 'manual') # User can provide category or default to manual
                 logger.info(f"📜 [Attempt {current_try}/{max_retries}] Using user topic: {selected_topic}")
             else:
-                # GLOBAL STRATEGY: Use History Buffet Selector
-                # Fetch last video's category for diversity logic
-                last_category = get_last_video_category(region)
+                # GLOBAL STRATEGY: Dynamic Topic Generation (80%) + History Buffet Fallback (20%)
                 
-                # Fetch retention stats per category for wave surfing
-                category_retention = get_category_retention_stats(limit=20, region_name=region)
-                 
-                # Get category weights from autopilot
-                category_weights = cast(Dict[str, Any], autopilot_config).get('category_weights')
+                # Fetch wiki entities for blacklist
+                past_wiki_entities = get_recent_wiki_entities(limit=50, region_name=region)
                 
-                # Select Topic (with retention-aware diversity)
-                safe_past_topics = cast(List[str], past_topics) if past_topics else []
-                topic_data, selected_category = select_next_topic(
-                    past_topics=[*safe_past_topics, *failed_topics_accumulator],
-                    category_weights=category_weights,
-                    last_category=last_category,
-                    category_retention=category_retention
-                )
+                # 80/20 split: Try dynamic generation first
+                use_dynamic = random.random() < 0.8  # 80% dynamic
+                topic_data = None
+                selected_category = None
                 
-                selected_topic = topic_data['topic']
-                selected_era = topic_data['era']
+                if use_dynamic:
+                    logger.info("🤖 [DYNAMIC] Attempting LLM-based topic generation...")
+                    category_weights = cast(Dict[str, Any], autopilot_config).get('category_weights')
+                    topic_data = generate_dynamic_topic(
+                        past_entities=past_wiki_entities,
+                        region_name=region,
+                        category_weights=category_weights
+                    )
+                    
+                    if topic_data:
+                        selected_category = topic_data.get('category', 'dynamic')
+                        logger.info(f"✅ [DYNAMIC] Generated: {topic_data.get('title', topic_data.get('topic'))} (obscurity: {topic_data.get('obscurity_score', 'N/A')})")
+                    else:
+                        logger.warning("⚠️ [DYNAMIC] Generation failed, falling back to static buckets")
+                
+                # Fallback to static buckets if dynamic fails OR 20% random
+                if not topic_data:
+                    logger.info("📚 [STATIC] Using History Buffet Selector...")
+                    last_category = get_last_video_category(region)
+                    category_retention = get_category_retention_stats(limit=20, region_name=region)
+                    category_weights = cast(Dict[str, Any], autopilot_config).get('category_weights')
+                    
+                    safe_past_topics = cast(List[str], past_topics) if past_topics else []
+                    topic_data, selected_category = select_next_topic(
+                        past_topics=[*safe_past_topics, *failed_topics_accumulator],
+                        category_weights=category_weights,
+                        last_category=last_category,
+                        category_retention=category_retention
+                    )
+                
+                # Extract topic (dynamic uses 'title', static uses 'topic')
+                selected_topic = topic_data.get('title') or topic_data.get('topic')
+                selected_era = topic_data.get('era', 'unknown')
+                search_entity = topic_data.get('wiki_entity') or topic_data.get('search_entity')
                 
                 logger.info(f"📜 [Attempt {current_try}/{max_retries}] Selected topic: {selected_topic} (Category: {selected_category})")
+                if search_entity:
+                    logger.info(f"🎯 Using targeted Wikipedia page: '{search_entity}'")
 
             # 2. Generate Script
             logger.info(f"🔧 Pipeline mode: {'NEW (v2.0)' if use_pipeline else 'LEGACY (v1.0)'}")
@@ -556,7 +583,8 @@ def lambda_handler(event, context):
                 
                 script_result = generate_script_with_fallback(
                     topic=selected_topic, 
-                    era=selected_era, 
+                    era=selected_era,
+                    search_entity=search_entity if 'search_entity' in locals() else None,  # Pass search_entity if available
                     region_name=region, 
                     use_pipeline=use_pipeline,
                     prompt_memory=prompt_memory,
@@ -898,6 +926,57 @@ Music: AI-Generated
                       f"Video generation failed: {str(e)}")
         
         raise e
+
+
+def generate_visual_plan(script: dict, era: str, entity: Optional[str] = None, figure: Optional[str] = None) -> List[dict]:
+    """
+    Generate visual plan (video segments) from a completed script.
+    
+    Args:
+        script: Script dict with 'hook' and 'sections'
+        era: Historical era tag
+        entity: Wikipedia entity for aesthetic focus
+        figure: Historical figure for aesthetic focus
+        
+    Returns:
+        List of segment dicts with 'image_prompt', 'text', 'start', 'end', 'era', 'entity', 'figure'
+    """
+    segments = []
+    
+    # Hook segment (always exists)
+    hook_text = script['hook'].get('audio_text', '')
+    hook_visual = script['hook'].get('visual_prompt', 'dramatic historical scene')
+    
+    segments.append({
+        'image_prompt': hook_visual,
+        'text': hook_text,
+        'start': 0,
+        'end': 3.5,
+        'era': era,
+        'entity': entity,
+        'figure': figure
+    })
+    
+    # Section segments
+    current_time = 3.5
+    for section in script.get('sections', []):
+        body_text = section.get('body_text', '')
+        header = section.get('header', '')
+        
+        # Use header as visual prompt (it's designed to be visual and punchy)
+        segments.append({
+            'image_prompt': header,
+            'text': body_text,
+            'start': current_time,
+            'end': current_time + 5.0,
+            'era': era,
+            'entity': entity,
+            'figure': figure
+        })
+        
+        current_time += 5.0
+    
+    return segments
 
 
 # Backward compatibility - keep old function names working

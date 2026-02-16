@@ -6,7 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Historical Shorts — Command Center</title>
     <link rel="stylesheet" href="styles.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap"
+        rel="stylesheet">
 </head>
 
 <body>
@@ -17,41 +19,36 @@
                 <span class="brand-icon">🎬</span>
                 <div class="brand-text">
                     <span class="brand-name">Historical</span>
-                    <span class="brand-sub">Command Center</span>
+                    <span class="brand-sub">KONTROL MERKEZİ</span>
                 </div>
             </div>
 
             <nav class="sidebar-nav">
-                <button class="nav-item active" data-page="dashboard" onclick="navigateTo('dashboard')">
-                    <span class="nav-icon">📊</span>
-                    <span class="nav-label">Dashboard</span>
+                <button class="nav-item active" onclick="navigateTo('dashboard')" data-page="dashboard">
+                    <span class="nav-icon">📊</span> Panel
                 </button>
-                <button class="nav-item" data-page="videos" onclick="navigateTo('videos')">
-                    <span class="nav-icon">🎬</span>
-                    <span class="nav-label">Videos</span>
+                <button class="nav-item" onclick="navigateTo('videos')" data-page="videos">
+                    <span class="nav-icon">🎬</span> Videolar
                 </button>
-                <button class="nav-item" data-page="analytics" onclick="navigateTo('analytics')">
-                    <span class="nav-icon">🔬</span>
-                    <span class="nav-label">Analytics</span>
+                <button class="nav-item" onclick="navigateTo('analytics')" data-page="analytics">
+                    <span class="nav-icon">🔬</span> Analitik
                 </button>
-                <button class="nav-item" data-page="generate" onclick="navigateTo('generate')">
-                    <span class="nav-icon">🚀</span>
-                    <span class="nav-label">Generate</span>
+                <button class="nav-item" onclick="navigateTo('generate')" data-page="generate">
+                    <span class="nav-icon">🚀</span> Üret
                 </button>
-                <button class="nav-item" data-page="jobs" onclick="navigateTo('jobs')">
-                    <span class="nav-icon">⚡</span>
-                    <span class="nav-label">Jobs</span>
+                <button class="nav-item" onclick="navigateTo('jobs')" data-page="jobs">
+                    <span class="nav-icon">⚡</span> İşlemler
                 </button>
             </nav>
 
             <div class="sidebar-footer">
                 <div class="api-key-section">
-                    <input type="password" id="apiKeyInput" placeholder="API Key" />
-                    <button onclick="setApiKey()" class="btn-key">🔑</button>
+                    <input type="password" id="apiKeyInput" placeholder="API Anahtarı">
+                    <button class="btn-key" onclick="setApiKey()">🔑</button>
                 </div>
                 <div class="connection-status" id="connectionStatus">
                     <span class="status-dot offline"></span>
-                    <span class="status-text">Disconnected</span>
+                    <span class="status-text">Bağlantı Yok</span>
                 </div>
             </div>
         </aside>
@@ -63,32 +60,32 @@
             <!-- ============================================================ -->
             <section id="page-dashboard" class="page active">
                 <div class="page-header">
-                    <h1>Dashboard</h1>
-                    <button class="btn-refresh" onclick="loadDashboard()">↻ Refresh</button>
+                    <h1>Panel</h1>
+                    <button class="btn-refresh" onclick="loadDashboard()">↻ Yenile</button>
                 </div>
 
                 <!-- KPI Cards Row -->
                 <div class="kpi-grid">
                     <div class="kpi-card">
                         <div class="kpi-value" id="kpiTotal">—</div>
-                        <div class="kpi-label">Total Videos</div>
+                        <div class="kpi-label">Toplam Video</div>
                         <div class="kpi-trend" id="kpiTotalTrend"></div>
                     </div>
                     <div class="kpi-card accent-green">
                         <div class="kpi-value" id="kpiComplete">—</div>
-                        <div class="kpi-label">Complete</div>
+                        <div class="kpi-label">Tamamlanan</div>
                     </div>
                     <div class="kpi-card accent-blue">
                         <div class="kpi-value" id="kpiEligible">—</div>
-                        <div class="kpi-label">Eligible</div>
+                        <div class="kpi-label">Uygun</div>
                     </div>
                     <div class="kpi-card accent-yellow">
                         <div class="kpi-value" id="kpiPending">—</div>
-                        <div class="kpi-label">Pending</div>
+                        <div class="kpi-label">Bekleyen</div>
                     </div>
                     <div class="kpi-card accent-red">
                         <div class="kpi-value" id="kpiFailed">—</div>
-                        <div class="kpi-label">Failed</div>
+                        <div class="kpi-label">Hatalı</div>
                     </div>
                     <div class="kpi-card accent-orange">
                         <div class="kpi-value" id="kpiTest">—</div>
@@ -98,7 +95,7 @@
 
                 <!-- Calibration Metrics -->
                 <div class="section-title">
-                    <h2>🔬 Calibration Metrics</h2>
+                    <h2>🔬 Kalibrasyon Metrikleri</h2>
                 </div>
                 <div class="metrics-grid">
                     <div class="metric-card glass">
@@ -107,41 +104,41 @@
                             <span class="metric-name">MAE</span>
                         </div>
                         <div class="metric-value" id="metricMAE">—</div>
-                        <div class="metric-desc">Mean Absolute Error (retention %)</div>
+                        <div class="metric-desc">Ortalama Mutlak Hata (izlenme %)</div>
                     </div>
                     <div class="metric-card glass">
                         <div class="metric-header">
                             <span class="metric-icon">📈</span>
-                            <span class="metric-name">Correlation</span>
+                            <span class="metric-name">Korelasyon</span>
                         </div>
                         <div class="metric-value" id="metricCorr">—</div>
-                        <div class="metric-desc">Predicted ↔ Actual retention</div>
+                        <div class="metric-desc">Tahmin ↔ Gerçek izlenme ilişkisi</div>
                     </div>
                     <div class="metric-card glass">
                         <div class="metric-header">
                             <span class="metric-icon">🧪</span>
-                            <span class="metric-name">Sample Size</span>
+                            <span class="metric-name">Örneklem</span>
                         </div>
                         <div class="metric-value" id="metricSample">—</div>
-                        <div class="metric-desc">Eligible complete videos</div>
+                        <div class="metric-desc">Analiz edilebilir videolar</div>
                     </div>
                     <div class="metric-card glass">
                         <div class="metric-header">
                             <span class="metric-icon">✅</span>
-                            <span class="metric-name">Eligible Rate</span>
+                            <span class="metric-name">Uygunluk Oranı</span>
                         </div>
                         <div class="metric-value" id="metricEligibleRate">—</div>
-                        <div class="metric-desc">Videos usable for calibration</div>
+                        <div class="metric-desc">Kalibrasyona uygun video oranı</div>
                     </div>
                 </div>
 
                 <!-- Recent Videos Quick View -->
                 <div class="section-title">
-                    <h2>📋 Recent Videos</h2>
-                    <button class="btn-text" onclick="navigateTo('videos')">View All →</button>
+                    <h2>📋 Son Videolar</h2>
+                    <button class="btn-text" onclick="navigateTo('videos')">Tümünü Gör →</button>
                 </div>
                 <div class="recent-videos" id="recentVideos">
-                    <div class="empty-state">Loading...</div>
+                    <div class="empty-state">Yükleniyor...</div>
                 </div>
             </section>
 
@@ -150,39 +147,39 @@
             <!-- ============================================================ -->
             <section id="page-videos" class="page">
                 <div class="page-header">
-                    <h1>Video Library</h1>
-                    <button class="btn-refresh" onclick="loadVideos()">↻ Refresh</button>
+                    <h1>Video Kütüphanesi</h1>
+                    <button class="btn-refresh" onclick="loadVideos()">↻ Yenile</button>
                 </div>
 
                 <!-- Filters Bar -->
                 <div class="filters-bar">
                     <select id="filterStatus" onchange="loadVideos()">
-                        <option value="">All Status</option>
-                        <option value="pending">Pending</option>
-                        <option value="linked">Linked</option>
-                        <option value="complete">Complete</option>
-                        <option value="failed">Failed</option>
+                        <option value="">Tüm Durumlar</option>
+                        <option value="pending">Bekleyen (Pending)</option>
+                        <option value="linked">Bağlı (Linked)</option>
+                        <option value="complete">Tamam (Complete)</option>
+                        <option value="failed">Hatalı (Failed)</option>
                         <option value="test">Test</option>
                     </select>
                     <select id="filterEligible" onchange="loadVideos()">
-                        <option value="">All Eligible</option>
-                        <option value="true">Eligible Only</option>
-                        <option value="false">Ineligible Only</option>
+                        <option value="">Tüm Uygunluk</option>
+                        <option value="true">Sadece Uygun</option>
+                        <option value="false">Uygun Olmayan</option>
                     </select>
                     <select id="filterMode" onchange="loadVideos()">
-                        <option value="">All Modes</option>
-                        <option value="fast">Fast</option>
-                        <option value="quality">Quality</option>
+                        <option value="">Tüm Modlar</option>
+                        <option value="fast">Hızlı (Fast)</option>
+                        <option value="quality">Kalite (Quality)</option>
                     </select>
                     <select id="filterFallback" onchange="loadVideos()">
-                        <option value="">All Pipeline</option>
-                        <option value="true">Fallback Only</option>
-                        <option value="false">v2.4 Only</option>
+                        <option value="">Tüm Sürümler</option>
+                        <option value="true">Fallback Sadece</option>
+                        <option value="false">v2.4 Sadece</option>
                     </select>
                     <div class="filter-spacer"></div>
                     <div class="bulk-actions">
-                        <button onclick="markSelectedAsTest()" class="btn-sm btn-outline">Mark TEST</button>
-                        <span class="selected-count" id="selectedCount">0 selected</span>
+                        <button onclick="markSelectedAsTest()" class="btn-sm btn-outline">TEST İşaretle</button>
+                        <span class="selected-count" id="selectedCount">0 seçildi</span>
                     </div>
                 </div>
 
@@ -191,17 +188,18 @@
                     <table class="data-table">
                         <thead>
                             <tr>
-                                <th class="th-check"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
-                                <th>Title</th>
-                                <th>Date</th>
-                                <th>Category</th>
-                                <th>Mode</th>
-                                <th>Hook</th>
-                                <th>Predicted</th>
-                                <th>Actual</th>
+                                <th class="th-check"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()">
+                                </th>
+                                <th>Başlık</th>
+                                <th>Tarih</th>
+                                <th>Kategori</th>
+                                <th>Mod</th>
+                                <th>Kanca</th>
+                                <th>Tahmin</th>
+                                <th>Gerçek</th>
                                 <th>Δ Refine</th>
-                                <th>Status</th>
-                                <th>Actions</th>
+                                <th>Durum</th>
+                                <th>İşlemler</th>
                             </tr>
                         </thead>
                         <tbody id="videosTableBody">
@@ -232,53 +230,50 @@
                     </div>
                     <div class="analytics-card">
                         <h3>Avg Hook Score Delta</h3>
-                        <div class="big-metric" id="avgDelta">—</div>
-                        <div class="metric-sub">first → final hook score change</div>
+                        <h1>Analitik & Kalibrasyon</h1>
+                        <button class="btn-refresh" onclick="loadAnalytics()">↻ Yenile</button>
                     </div>
-                    <div class="analytics-card">
-                        <h3>Goodhart Risk</h3>
-                        <div class="big-metric" id="goodhartStatus">—</div>
-                        <div class="metric-sub" id="goodhartDesc">Pearson(delta, retention)</div>
-                    </div>
-                </div>
 
-                <!-- Category Performance -->
-                <div class="section-title">
-                    <h2>📊 Category Performance</h2>
-                </div>
-                <div class="analytics-grid">
-                    <div class="analytics-card wide">
-                        <h3>Retention by Category</h3>
-                        <div class="chart-area" id="categoryChart">
-                            <div class="empty-state">Loading data...</div>
+                    <div class="analytics-grid">
+                        <!-- Refine Delta Analysis -->
+                        <div class="analytics-card wide">
+                            <h3>🔬 Refine Fark Analizi (Kanca Puanı artışı)</h3>
+                            <div class="chart-area" id="deltaChart"></div>
+                            <div class="big-metric" id="avgDelta">—</div>
+                            <div class="metric-sub">Ortalama Puan Artışı</div>
                         </div>
-                    </div>
-                    <div class="analytics-card">
-                        <h3>Refine Bucket Curve</h3>
-                        <div class="chart-area" id="refineChart">
-                            <div class="empty-state">Loading data...</div>
-                        </div>
-                    </div>
-                    <div class="analytics-card">
-                        <h3>Mode Comparison</h3>
-                        <div class="chart-area" id="modeChart">
-                            <div class="empty-state">Loading data...</div>
-                        </div>
-                    </div>
-                </div>
 
-                <!-- Predicted vs Actual Scatter -->
-                <div class="section-title">
-                    <h2>🎯 Calibration Scatter</h2>
-                </div>
-                <div class="analytics-grid">
-                    <div class="analytics-card extra-wide">
-                        <h3>Predicted vs Actual Retention</h3>
-                        <div class="chart-area tall" id="scatterChart">
-                            <div class="empty-state">Loading data...</div>
+                        <!-- Goodhart Detection -->
+                        <div class="analytics-card">
+                            <h3>⚠️ Goodhart Tespiti</h3>
+                            <div class="big-metric" id="goodhartStatus">—</div>
+                            <div class="metric-sub" id="goodhartDesc">Veri bekleniyor...</div>
+                        </div>
+
+                        <!-- Category Performance -->
+                        <div class="analytics-card wide">
+                            <h3>📊 Kategori Performansı (İzlenme %)</h3>
+                            <div class="chart-area" id="categoryChart"></div>
+                        </div>
+
+                        <!-- Refine Impact Curve -->
+                        <div class="analytics-card">
+                            <h3>🔄 Refine Etki Eğrisi</h3>
+                            <div class="chart-area" id="refineChart"></div>
+                        </div>
+
+                        <!-- Mode Comparison -->
+                        <div class="analytics-card">
+                            <h3>⚡ Mod Karşılaştırması</h3>
+                            <div class="chart-area" id="modeChart"></div>
+                        </div>
+
+                        <!-- Calibration Scatter -->
+                        <div class="analytics-card extra-wide">
+                            <h3>🎯 Kalibrasyon Saçılımı (Tahmin vs Gerçek)</h3>
+                            <div class="chart-area tall" id="scatterChart"></div>
                         </div>
                     </div>
-                </div>
             </section>
 
             <!-- ============================================================ -->
@@ -286,76 +281,68 @@
             <!-- ============================================================ -->
             <section id="page-generate" class="page">
                 <div class="page-header">
-                    <h1>Generate Video</h1>
+                    <h1>Yeni Video Üret</h1>
                 </div>
 
                 <div class="generate-container">
                     <div class="gen-card glass">
                         <div class="gen-card-header">
-                            <span class="gen-icon">🎬</span>
-                            <h2>New Video</h2>
+                            <span class="gen-icon">🚀</span>
+                            <h2>Üretim Parametreleri</h2>
                         </div>
-
                         <div class="gen-form">
                             <div class="gen-row">
                                 <div class="gen-field">
-                                    <label>Mode</label>
+                                    <label>Mod</label>
                                     <select id="genMode">
-                                        <option value="auto">🤖 Auto (Autopilot)</option>
-                                        <option value="quality">💎 Quality</option>
-                                        <option value="fast">⚡ Fast</option>
+                                        <option value="auto">Otomatik (Auto)</option>
+                                        <option value="fast">Hızlı (Fast)</option>
+                                        <option value="quality">Kalite (Quality)</option>
                                     </select>
                                 </div>
                                 <div class="gen-field">
-                                    <label>Title Variant</label>
+                                    <label>Başlık Varyasyonu</label>
                                     <select id="genTitleVariant">
-                                        <option value="auto">Auto</option>
-                                        <option value="bold">Bold</option>
-                                        <option value="safe">Safe</option>
-                                        <option value="experimental">Experimental</option>
+                                        <option value="auto">Otomatik Seçim</option>
+                                        <option value="question">Soru (Question)</option>
+                                        <option value="statement">İfade (Statement)</option>
+                                        <option value="list">Liste (List)</option>
+                                        <option value="comparison">Karşılaştırma</option>
                                     </select>
                                 </div>
                             </div>
 
                             <div class="gen-field">
-                                <label>Topic Override <span class="optional">(optional)</span></label>
-                                <input type="text" id="genTopic" placeholder="e.g., 'The mystery of the Voynich manuscript'" />
+                                <label>Konu (Manuel Override) <span class="optional">- İsteğe Bağlı</span></label>
+                                <input type="text" id="genTopic" placeholder="Örn: The Battle of Thermopylae">
                             </div>
 
                             <div class="gen-field">
                                 <label class="checkbox-label">
                                     <input type="checkbox" id="genEligible" checked>
-                                    <span class="checkbox-custom"></span>
-                                    Calibration Eligible
+                                    Kalibrasyona Uygun (Eligible)
                                 </label>
                             </div>
 
                             <div class="gen-actions">
-                                <button class="btn-generate" onclick="generateVideo()">
-                                    <span class="btn-icon">🚀</span>
-                                    Generate Now
-                                </button>
-                                <button class="btn-generate-test" onclick="generateTestVideo()">
-                                    <span class="btn-icon">🧪</span>
-                                    Generate TEST
-                                </button>
+                                <button class="btn-generate" onclick="generateVideo()">✨ Şimdi Üret</button>
+                                <button class="btn-generate-test" onclick="generateTestVideo()">🧪 TEST Üret</button>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Quick Stats -->
                     <div class="gen-stats">
                         <div class="gen-stat-card">
                             <div class="gen-stat-value" id="genStatToday">—</div>
-                            <div class="gen-stat-label">Today's Videos</div>
+                            <div class="gen-stat-label">Bugün Üretilen</div>
                         </div>
                         <div class="gen-stat-card">
                             <div class="gen-stat-value" id="genStatWeek">—</div>
-                            <div class="gen-stat-label">This Week</div>
+                            <div class="gen-stat-label">Bu Hafta</div>
                         </div>
                         <div class="gen-stat-card">
                             <div class="gen-stat-value" id="genStatAvgRet">—</div>
-                            <div class="gen-stat-label">Avg Retention</div>
+                            <div class="gen-stat-label">Ort. İzlenme (7 Gün)</div>
                         </div>
                     </div>
                 </div>
@@ -366,68 +353,72 @@
             <!-- ============================================================ -->
             <section id="page-jobs" class="page">
                 <div class="page-header">
-                    <h1>System Activity</h1>
+                    <h1>Sistem Aktivitesi</h1>
                     <div class="header-actions">
                         <select id="jobStatusFilter" onchange="loadJobs()">
-                            <option value="">All Status</option>
-                            <option value="queued">Queued</option>
-                            <option value="running">Running</option>
-                            <option value="completed">Completed</option>
-                            <option value="failed">Failed</option>
+                            <option value="">Tüm İşlemler</option>
+                            <option value="queued">Sırada</option>
+                            <option value="running">Çalışıyor</option>
+                            <option value="completed">Tamamlandı</option>
+                            <option value="failed">Hatalı</option>
                         </select>
-                        <button class="btn-refresh" onclick="loadJobs()">↻ Refresh</button>
+                        <button class="btn-refresh" onclick="loadJobs()">↻ Yenile</button>
                     </div>
                 </div>
 
                 <div class="jobs-timeline" id="jobsTimeline">
-                    <div class="empty-state">Loading jobs...</div>
+                    <div class="empty-state">Yükleniyor...</div>
                 </div>
             </section>
         </main>
     </div>
 
     <!-- ============================================================ -->
-    <!-- VIDEO DETAIL MODAL -->
+    <!-- MODALS -->
     <!-- ============================================================ -->
+
+    <!-- Video Detail Modal -->
     <div id="videoModal" class="modal-overlay hidden">
-        <div class="modal-panel">
+        <div class="modal-panel wide">
             <div class="modal-header">
-                <h2 id="modalTitle">Video Details</h2>
+                <h2 id="modalTitle">Video Detayı</h2>
                 <button class="modal-close" onclick="closeModal()">✕</button>
             </div>
-            <div class="modal-body" id="modalBody"></div>
+            <div class="modal-body" id="modalBody">
+                <!-- Content injected by JS -->
+            </div>
         </div>
     </div>
 
-    <!-- ============================================================ -->
-    <!-- LOGS MODAL -->
-    <!-- ============================================================ -->
+    <!-- Logs Modal -->
     <div id="logsModal" class="modal-overlay hidden">
-        <div class="modal-panel wide">
+        <div class="modal-panel">
             <div class="modal-header">
-                <h2 id="logsModalTitle">📋 Job Logs</h2>
+                <h2 id="logsModalTitle">Sistem Logları</h2>
                 <button class="modal-close" onclick="closeLogsModal()">✕</button>
             </div>
             <div class="logs-filters">
                 <select id="logComponentFilter" onchange="filterLogs()">
-                    <option value="">All Components</option>
-                    <option value="video_generator">video_generator</option>
-                    <option value="analytics_fetcher">analytics_fetcher</option>
-                    <option value="decision_engine">decision_engine</option>
+                    <option value="">Tüm Bileşenler</option>
+                    <option value="DecisionEngine">DecisionEngine</option>
+                    <option value="VideoGenerator">VideoGenerator</option>
+                    <option value="AnalyticsFetcher">AnalyticsFetcher</option>
                 </select>
                 <select id="logLevelFilter" onchange="filterLogs()">
-                    <option value="">All Levels</option>
+                    <option value="">Tüm Seviyeler</option>
                     <option value="INFO">INFO</option>
                     <option value="WARN">WARN</option>
                     <option value="ERROR">ERROR</option>
                 </select>
             </div>
-            <div id="logsContainer" class="logs-container"></div>
+            <div class="logs-container" id="logsContainer">
+                <!-- Logs injected by JS -->
+            </div>
         </div>
     </div>
 
     <!-- Toast Container -->
-    <div id="toastContainer" class="toast-container"></div>
+    <div class="toast-container" id="toastContainer"></div>
 
     <script src="app.js"></script>
 </body>

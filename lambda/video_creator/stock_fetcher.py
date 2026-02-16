@@ -41,9 +41,15 @@ ERA_VISUALS = {
     "ancient": "Ancient world setting, stone temples, bronze weapons, primitive fabrics, epic scale",
     "renaissance": "Renaissance period setting, elaborate clothing, artistic architecture, rapier swords, vibrant colors",
     "early_20th": "Early 20th century setting, vintage cars, fedora hats, trench coats, black and white photography style",
+    "early_20th_western": "Roaring 20s western setting, flappers, jazz age, art deco, busy city streets, vintage cars",
     "ww1": "World War 1 setting, muddy trenches, gas masks, biplanes, desolate battlefields, gritty realism",
     "modern": "Mid-20th century retro setting, vintage tech, cold war aesthetic, neon signs, film noir style",
-    "anthropology_and_culture": "Cultural ritual setting, indigenous attire, ceremonial objects, detailed textures, national geographic style",
+    
+    # CULTURAL EXTENSIONS (The "Guardrails")
+    "feudal_japan": "traditional ancient Japanese setting, samurai era, wooden temples, misty mountains, monks in traditional robes, cinematic asian aesthetic",
+    "ancient_mesoamerica": "ancient Aztec/Maya setting, stone pyramids, indigenous tribal attire, jungle environments, obsidian weapons",
+    "indigenous_culture": "traditional tribal setting, authentic indigenous clothing, ancient rituals, nature-focused, cinematic national geographic style",
+    "ottoman_empire": "15th-19th century Ottoman period setting, ornate armor, turbans, huge cannons, eastern architecture, minarets, cinematic orientalist painting style"
 }
 
 # 3. MOOD (Lighting & Atmosphere)
@@ -235,7 +241,13 @@ def generate_cinematic_prompt(sentence_text: str, era_tag: str) -> str:
     return final_prompt
 
 
-def enhance_prompt_for_era(prompt: str, era: Optional[str] = None, mood: Optional[str] = None) -> str:
+def enhance_prompt_for_era(
+    prompt: str, 
+    era: Optional[str] = None, 
+    mood: Optional[str] = None,
+    entity: Optional[str] = None,
+    figure: Optional[str] = None
+) -> str:
     """
     Enhance an image prompt with Visual Director logic + Titan Safety.
     
@@ -243,6 +255,8 @@ def enhance_prompt_for_era(prompt: str, era: Optional[str] = None, mood: Optiona
         prompt: Base script text or description
         era: Historical era tag
         mood: (Ignored in new logic, used MOOD_LIGHTING constant)
+        entity: Wikipedia entity for aesthetic focus (e.g., "Berghof", "Great Chain")
+        figure: Historical figure for aesthetic focus (e.g., "Crassus", "Hitler")
         
     Returns:
         Enhanced 4-layer cinematic prompt, fully sanitized.
@@ -260,7 +274,27 @@ def enhance_prompt_for_era(prompt: str, era: Optional[str] = None, mood: Optiona
         from titan_sanitizer import replace_figure_with_description, sanitize_prompt, add_face_avoidance # pyre-ignore[21]
         
         prompt_preview = prompt[:30] if len(prompt) > 30 else prompt  # pyre-ignore[6]
-        print(f"🎬 Visual Director: Enhancing '{prompt_preview}...' -> Era: {era}")
+        
+        # Build aesthetic focus string
+        aesthetic_focus = []
+        if entity:
+            aesthetic_focus.append(entity)
+        if figure:
+            aesthetic_focus.append(figure)
+        focus_str = f" | Focus: {' / '.join(aesthetic_focus)}" if aesthetic_focus else ""
+        
+        print(f"🎬 Visual Director: Enhancing '{prompt_preview}...' -> Era: {era}{focus_str}")
+        
+        # CRITICAL: Inject entity/figure context into prompt for sanitizer awareness
+        # This helps titan_sanitizer identify and replace problematic names/entities
+        if entity or figure:
+            context_injection = []
+            if figure:
+                context_injection.append(f"featuring {figure}")
+            if entity:
+                context_injection.append(f"related to {entity}")
+            cinematic_prompt = f"{cinematic_prompt}, {', '.join(context_injection)}"
+            print(f"🛡️ Entity/Figure injected for sanitization: {', '.join(context_injection)}")
         
         # Step A: Replace names with descriptions (Crucial for bypass)
         safe_prompt, _, _ = replace_figure_with_description(cinematic_prompt)
@@ -275,7 +309,7 @@ def enhance_prompt_for_era(prompt: str, era: Optional[str] = None, mood: Optiona
         import itertools
         s_prompt = str(safe_prompt)
         if len(s_prompt) > 480:
-            safe_prompt = "".join(itertools.islice(s_prompt, 480))
+            safe_prompt = s_prompt[0:480]  # pyre-ignore[16]
             
         final_prompt = safe_prompt
         
@@ -283,16 +317,20 @@ def enhance_prompt_for_era(prompt: str, era: Optional[str] = None, mood: Optiona
         # Fallback to local sanitization if safe components missing
         print("⚠️ titan_sanitizer not found, using local fallback")
         final_prompt = sanitize_prompt_for_titan(cinematic_prompt)
-        if len(final_prompt) > 480: final_prompt = "".join(itertools.islice(final_prompt, 480))
+        if len(final_prompt) > 480: final_prompt = final_prompt[0:480]  # pyre-ignore[16]
 
     # Ensure vertical aspect ratio (Titan V2 parameter, but good to have in prompt too)
     if "vertical" not in final_prompt.lower():
          final_prompt += ", 9:16 vertical composition"
     
-    final_preview = final_prompt[:100]
+    # Ensure final_prompt is treated as string for slicing
+    final_prompt_str: str = str(final_prompt)
+    final_preview: str = final_prompt_str[0:100]  # pyre-ignore[16]
     print(f"🎨 Final Visual Director Prompt: {final_preview}...")
     
     return final_prompt
+
+
 
 
 def fetch_videos_by_segments(segments: List[dict], era: Optional[str] = None, api_key: Optional[str] = None) -> List[str]:
@@ -315,9 +353,18 @@ def fetch_videos_by_segments(segments: List[dict], era: Optional[str] = None, ap
         # Get the image prompt from segment (new format) or fall back to query (old format)
         image_prompt = segment.get('image_prompt') or segment.get('query', 'historical scene')
         
-        # Enhance prompt with era styling
+        # Extract aesthetic focus parameters
         segment_era = era or segment.get('era', 'early_20th')
-        enhanced_prompt = enhance_prompt_for_era(image_prompt, segment_era)
+        segment_entity = segment.get('entity')
+        segment_figure = segment.get('figure')
+        
+        # Enhance prompt with era + entity/figure aesthetic focus
+        enhanced_prompt = enhance_prompt_for_era(
+            image_prompt, 
+            segment_era,
+            entity=segment_entity,
+            figure=segment_figure
+        )
         
         print(f"🔍 Segment {i}: Generating historical image...")
         

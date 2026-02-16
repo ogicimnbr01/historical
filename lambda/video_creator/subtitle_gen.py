@@ -142,14 +142,46 @@ def create_subtitle_file(
         sentences = [narration_text.strip()]
     
     # Calculate total words for timing
-    all_words = narration_text.split()
-    total_words = len(all_words) or 1
+    all_words_list = []
+    for sentence in sentences:
+        all_words_list.extend(sentence.split())
     
-    # Build word-level timing: each word gets equal time share
-    word_duration = total_duration / total_words
+    total_words = len(all_words_list) or 1
     
-    # Now iterate through sentences, chunk their words, and create events
-    global_word_index = 0
+    # HEURISTIC TIMING ALGORITHM
+    # 1. Count punctuation for pause calculation
+    count_strong_pause = narration_text.count('.') + narration_text.count('?') + narration_text.count('!')
+    count_weak_pause = narration_text.count(',') + narration_text.count(';')
+    
+    # 2. Assign pause durations (in seconds)
+    PAUSE_STRONG: float = 0.5
+    PAUSE_WEAK: float = 0.2
+    
+    total_pause_duration = (count_strong_pause * PAUSE_STRONG) + (count_weak_pause * PAUSE_WEAK)
+    
+    # 3. Calculate remaining time for actual speech
+    # Safety: Ensure we don't subtract more than available (cap pauses at 40% of total)
+    max_pause_allowance = total_duration * 0.40
+    
+    if total_pause_duration > max_pause_allowance:
+        print(f"⚠️ Pauses ({total_pause_duration}s) too long for video ({total_duration}s). Scales down.")
+        scale_factor = max_pause_allowance / total_pause_duration
+        total_pause_duration = max_pause_allowance
+        PAUSE_STRONG *= scale_factor
+        PAUSE_WEAK *= scale_factor
+        
+    available_speech_time = total_duration - total_pause_duration
+    base_word_duration = available_speech_time / total_words
+    
+    print(f"⏱️ Timing: Base word={base_word_duration:.2f}s, Strong pause={PAUSE_STRONG:.2f}s, Weak pause={PAUSE_WEAK:.2f}s")
+    
+    # 4. Generate events with dynamic timing
+    # SUBTITLE SYNC FIX: Add initial offset to compensate for TTS audio latency
+    # Subtitles were ending early because they started at 0.0, audio has ~150ms processing delay
+    INITIAL_OFFSET = 0.15  # 150ms delay to sync with audio start
+    current_time = INITIAL_OFFSET
+    
+    print(f"🎯 Subtitle sync: Starting at {INITIAL_OFFSET}s offset for audio alignment")
     
     for sent_idx, sentence in enumerate(sentences):
         words = sentence.split()
@@ -164,26 +196,30 @@ def create_subtitle_file(
         else:
             base_style = "Default"
         
-        # Chunk the words into 1-3 word groups
+        # Chunk words
         chunks = chunk_words(words)
         
         for chunk in chunks:
-            chunk_word_count = len(chunk.split())
+            chunk_words_list = chunk.split()
+            chunk_word_count = len(chunk_words_list)
             
-            # Calculate timing based on word position
-            start_time = global_word_index * word_duration  # pyre-ignore[6]
-            end_time = (global_word_index + chunk_word_count) * word_duration  # pyre-ignore[6]
+            # Calculate duration for this chunk
+            chunk_duration: float = float(chunk_word_count * base_word_duration)
             
-            # Minimum display time: 0.25s per word, minimum 0.4s total
-            min_display = max(0.4, chunk_word_count * 0.25)
-            if (end_time - start_time) < min_display:
-                end_time = start_time + min_display
+            # Add pause if chunk ends with punctuation
+            last_word = chunk_words_list[-1]
+            if last_word[-1] in ['.', '?', '!']:
+                chunk_duration = float(chunk_duration + PAUSE_STRONG)  # pyre-ignore[58]
+            elif last_word[-1] in [',', ';']:
+                chunk_duration = float(chunk_duration + PAUSE_WEAK)  # pyre-ignore[58]
+                
+            start_time = current_time
+            end_time = current_time + chunk_duration  # pyre-ignore[58]
             
-            # Clamp to total duration
-            if end_time > total_duration:
-                end_time = total_duration
-            if start_time >= total_duration:
-                break
+            # Update current time for next chunk
+            current_time += chunk_duration  # pyre-ignore[58]
+            
+            # --- Event Generation (same as before) ---
             
             # Check if this chunk contains a power word
             has_power = any(is_power_word(w) for w in chunk.split())
@@ -193,9 +229,6 @@ def create_subtitle_file(
             safe_text = escape_ass_text(chunk.upper())  # ALL CAPS for impact
             
             # ANIMATION: Scale-up pop + fade
-            # \fscx130\fscy130 → \fscx100\fscy100 = "pop in" effect
-            # \fad(80,120) = quick fade in/out
-            # \an5 = center alignment override
             if has_power:
                 # Power words: BIGGER pop, yellow color flash
                 effects = (
@@ -217,8 +250,6 @@ def create_subtitle_file(
             events.append(
                 f"Dialogue: 0,{format_ass_time(start_time)},{format_ass_time(end_time)},{style},,0,0,0,,{effects}{safe_text}"
             )
-            
-            global_word_index += chunk_word_count  # pyre-ignore[6]
     
     # Write the ASS file
     with open(subtitle_path, 'w', encoding='utf-8') as f:

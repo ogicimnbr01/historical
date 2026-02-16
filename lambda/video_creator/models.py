@@ -54,10 +54,10 @@ class HookKPI(BaseModel):
 
 class HookEvaluation(BaseModel):
     hook: str
-    tension: Optional[int] = 0
-    clarity: Optional[int] = 0
-    scroll_stop: Optional[int] = 0
-    word_count: Optional[int] = 0
+    tension: Optional[float] = 0
+    clarity: Optional[float] = 0
+    scroll_stop: Optional[float] = 0
+    word_count: Optional[float] = 0
     total: float
     fixes: List[str] = []
 
@@ -66,9 +66,9 @@ class HookEvaluationBatch(BaseModel):
 
 class SectionEvaluation(BaseModel):
     text: str
-    clarity: Optional[int] = 0
-    pacing: Optional[int] = 0
-    punch: Optional[int] = 0
+    clarity: Optional[float] = 0
+    pacing: Optional[float] = 0
+    punch: Optional[float] = 0
     total: float
     fixes: List[str] = []
 
@@ -76,10 +76,11 @@ class SectionEvaluationBatch(BaseModel):
     evaluations: List[SectionEvaluation]
 
 class FinalEvaluation(BaseModel):
-    hook_impact: int
-    flow: int
-    pacing: int
-    punch: int
+    """Structure for final script evaluation."""
+    hook_impact: float
+    flow: Optional[float] = 0  # Made optional - not always provided by LLM
+    pacing: float
+    punch: Optional[float] = 0  # Made optional - not always provided by LLM
     total: float
     weakest_section: str
     fix_suggestion: str
